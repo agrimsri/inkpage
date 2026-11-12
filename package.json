@@ -1,0 +1,13 @@
+{
+  "name": "inkpage-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter @inkpage/desktop dev",
+    "build": "pnpm --filter @inkpage/format build && pnpm --filter @inkpage/ui build && pnpm --filter @inkpage/desktop build",
+    "test": "pnpm -r test"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["electron", "esbuild"]
+  }
+}

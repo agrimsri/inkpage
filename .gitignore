@@ -1,0 +1,30 @@
+# Build outputs
+target/
+dist/
+out/
+build/
+node_modules/
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Inkpage derived data
+.inkpage/
+*.inkpage-temp
+
+# Private test corpora
+/fixtures/private/
+*.onepkg
+*.onetoc2
+*.one
+
+# Logs and environment
+*.log
+.env
+.env.local

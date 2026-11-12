@@ -1,0 +1,7 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/inkpage-onestore",
+    "crates/inkpage-import",
+    "crates/inkpage-core",
+]

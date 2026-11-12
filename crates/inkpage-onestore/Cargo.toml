@@ -1,0 +1,13 @@
+[package]
+name = "inkpage-onestore"
+version = "0.1.0"
+edition = "2021"
+description = "MS-ONESTORE and FSSHTTPB parser layer for Inkpage"
+
+[dependencies]
+onenote_parser = { version = "2.1", features = ["native-fs", "onepkg"] }
+uuid = { version = "1.0", features = ["v4", "serde"] }
+typed-path = "0.12"
+thiserror = "2.0"
+bytes = "1.0"
+serde = { version = "1.0", features = ["derive"] }
