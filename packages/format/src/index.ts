@@ -15,8 +15,10 @@ export interface Section {
   color: string;
   parentGroup?: ID | null;
   pageOrder: ID[];
+  isLocked?: boolean;
+  passwordHash?: string;
   encrypted?: {
-    kdf: 'argon2id';
+    kdf: 'argon2id' | 'sha256';
     salt: string;
     params: Record<string, unknown>;
     check: string;
@@ -25,13 +27,20 @@ export interface Section {
 
 export interface PageBackground {
   kind: 'none' | 'rule' | 'grid' | 'image';
-  spacing?: number;
-  color?: string;
+  spacing?: number; // 16px narrow, 20px college, 24px standard, 28px wide; or 8, 16, 24, 32px grid
+  color?: string; // line color
 }
 
 export interface PageSize {
   w: number | 'auto';
   h: number | 'auto';
+  preset?: 'auto' | 'letter' | 'a4' | 'legal';
+}
+
+export interface PageRevision {
+  timestamp: string;
+  author: string;
+  snapshot: string; // JSON string of Page
 }
 
 export interface Page {
@@ -43,8 +52,12 @@ export interface Page {
   created: string;
   modified: string;
   size: PageSize;
+  pageColor?: string; // pastel tint
   background?: PageBackground;
   items: Item[];
+  isDeleted?: boolean;
+  deletedAt?: string;
+  history?: PageRevision[];
   meta?: Record<string, unknown>;
 }
 
@@ -57,15 +70,32 @@ export interface Box {
   z: number;
 }
 
+export type TagType =
+  | 'todo'
+  | 'important'
+  | 'question'
+  | 'remember'
+  | 'definition'
+  | 'highlight'
+  | 'contact'
+  | 'address'
+  | 'phone'
+  | 'idea'
+  | 'critical'
+  | 'password'
+  | string;
+
 export interface NoteTag {
-  type: 'todo' | 'important' | 'question' | string;
+  type: TagType;
   done?: boolean;
+  label?: string;
 }
 
 export interface OutlineItemAttrs {
   indent: number;
   tags?: NoteTag[];
-  bulletStyle?: 'none' | 'disc' | 'circle' | 'square' | 'number';
+  bulletStyle?: 'none' | 'disc' | 'circle' | 'square' | 'diamond' | 'star' | 'arrow' | 'number';
+  collapsed?: boolean;
 }
 
 export interface PMDocNode {
@@ -94,7 +124,7 @@ export type StrokePoint = [
 
 export interface Stroke {
   id: ID;
-  tool: 'pen' | 'highlighter' | 'pencil';
+  tool: 'pen' | 'highlighter' | 'pencil' | 'laser';
   color: string;
   width: number;
   pts: StrokePoint[];
@@ -107,7 +137,7 @@ export interface InkGroup extends Box {
 
 export interface ImageItem extends Box {
   kind: 'image';
-  asset: string; // sha256
+  asset: string; // sha256 or base64 data url
   alt?: string;
   ocr?: string;
 }
@@ -124,6 +154,9 @@ export interface TableCell {
   row: number;
   col: number;
   text: string;
+  shading?: string;
+  bold?: boolean;
+  align?: 'left' | 'center' | 'right';
 }
 
 export interface TableItem extends Box {
@@ -131,6 +164,8 @@ export interface TableItem extends Box {
   rows: number;
   cols: number;
   cells: TableCell[];
+  hasHeaderRow?: boolean;
+  showBorders?: boolean;
 }
 
 export interface MathItem extends Box {
@@ -138,12 +173,39 @@ export interface MathItem extends Box {
   latex: string;
 }
 
+export type ShapeType =
+  | 'line'
+  | 'arrow'
+  | 'doubleArrow'
+  | 'rect'
+  | 'roundedRect'
+  | 'ellipse'
+  | 'triangle'
+  | 'diamond'
+  | 'star'
+  | 'grid';
+
 export interface ShapeItem extends Box {
   kind: 'shape';
-  shapeType: 'rect' | 'ellipse' | 'line' | 'arrow';
+  shapeType: ShapeType;
   strokeColor: string;
   fillColor?: string;
   strokeWidth: number;
+}
+
+export interface AudioItem extends Box {
+  kind: 'audio';
+  asset: string;
+  duration: number; // in seconds
+  filename: string;
+  audioUrl?: string;
+  timestamps?: Array<{ time: number; noteId: string }>;
+}
+
+export interface VideoItem extends Box {
+  kind: 'video';
+  url: string;
+  title?: string;
 }
 
 export type Item =
@@ -153,7 +215,9 @@ export type Item =
   | FileItem
   | TableItem
   | MathItem
-  | ShapeItem;
+  | ShapeItem
+  | AudioItem
+  | VideoItem;
 
 export interface ImportWarning {
   code: string;
@@ -190,7 +254,7 @@ export interface TagSummaryItem {
   sectionId: string;
   sectionTitle: string;
   sectionColor: string;
-  tagType: 'todo' | 'important' | 'question' | string;
+  tagType: TagType;
   done?: boolean;
   text: string;
 }

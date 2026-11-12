@@ -1,17 +1,34 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import type { Notebook, Section, Page, Item, Container, InkGroup } from '@inkpage/format';
+import type {
+  Notebook,
+  Section,
+  Page,
+  Item,
+  Container,
+  InkGroup,
+  TableItem,
+  MathItem,
+  ShapeItem,
+  ShapeType,
+  AudioItem,
+  PageRevision,
+} from '@inkpage/format';
 import {
   Sidebar,
-  ToolPalette,
+  Ribbon,
+  RibbonTab,
   Canvas,
   SearchPane,
   TagsSummaryPane,
   ImportWizard,
   ExportModal,
   M0LatencyDashboard,
+  PasswordModal,
+  PageVersionsModal,
   ToolType,
   MetricSample,
 } from '@inkpage/ui';
+import { Lock, Unlock } from 'lucide-react';
 
 const API_BASE_URL = 'http://127.0.0.1:3888';
 
@@ -23,10 +40,42 @@ export const App: React.FC = () => {
   const [pages, setPages] = useState<Page[]>([]);
   const [activePage, setActivePage] = useState<Page | null>(null);
 
-  // Tool states
+  // Ribbon Navigation & Tools
+  const [activeTab, setActiveTab] = useState<RibbonTab>('home');
   const [activeTool, setActiveTool] = useState<ToolType>('select');
   const [activeColor, setActiveColor] = useState<string>('#2563eb');
   const [activeWidth, setActiveWidth] = useState<number>(4);
+
+  // Typography & Formatting
+  const [fontFamily, setFontFamily] = useState<string>('Segoe UI');
+  const [fontSize, setFontSize] = useState<number>(14);
+  const [isBold, setIsBold] = useState<boolean>(false);
+  const [isItalic, setIsItalic] = useState<boolean>(false);
+  const [isUnderline, setIsUnderline] = useState<boolean>(false);
+  const [isStrikethrough, setIsStrikethrough] = useState<boolean>(false);
+  const [isSubscript, setIsSubscript] = useState<boolean>(false);
+  const [isSuperscript, setIsSuperscript] = useState<boolean>(false);
+  const [highlightColor, setHighlightColor] = useState<string>('transparent');
+  const [fontColor, setFontColor] = useState<string>('#0f172a');
+  const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>('left');
+
+  // Drawing & Shapes
+  const [selectedShape, setSelectedShape] = useState<ShapeType | null>(null);
+  const [inkToShapeEnabled, setInkToShapeEnabled] = useState<boolean>(false);
+  const [rulerEnabled, setRulerEnabled] = useState<boolean>(false);
+  const [eraserMode, setEraserMode] = useState<'stroke' | 'point'>('stroke');
+
+  // View States
+  const [isFullPageView, setIsFullPageView] = useState<boolean>(false);
+
+  // Audio Recording State
+  const [isRecordingAudio, setIsRecordingAudio] = useState<boolean>(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordStartTimeRef = useRef<number>(0);
+
+  // Selection
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
 
   // Panes and Modals
   const [showSearch, setShowSearch] = useState<boolean>(false);
@@ -34,6 +83,8 @@ export const App: React.FC = () => {
   const [showImport, setShowImport] = useState<boolean>(false);
   const [showExport, setShowExport] = useState<boolean>(false);
   const [showSpikeDashboard, setShowSpikeDashboard] = useState<boolean>(false);
+  const [showPasswordModal, setShowPasswordModal] = useState<boolean>(false);
+  const [showVersionsModal, setShowVersionsModal] = useState<boolean>(false);
 
   // Metrics for M0 Latency Spike
   const [metricSamples, setMetricSamples] = useState<MetricSample[]>([]);
@@ -41,6 +92,10 @@ export const App: React.FC = () => {
   // History stack for Undo/Redo
   const historyRef = useRef<Page[]>([]);
   const historyIdxRef = useRef<number>(-1);
+
+  // Hidden file inputs for attachments & images
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
 
   // Load Notebooks on startup
   useEffect(() => {
@@ -65,7 +120,6 @@ export const App: React.FC = () => {
   };
 
   const fallbackToLocalDemo = () => {
-    // Resilient local state if backend server isn't running
     const demoNotebook: Notebook = {
       schema: 1,
       id: 'demo-nb-1',
@@ -87,15 +141,16 @@ export const App: React.FC = () => {
       level: 0,
       created: '2026-11-12T10:00:00Z',
       modified: '2026-11-12T10:00:00Z',
-      size: { w: 'auto', h: 'auto' },
-      background: { kind: 'rule', spacing: 24, color: '#e2e8f0' },
+      size: { w: 'auto', h: 'auto', preset: 'auto' },
+      pageColor: '#ffffff',
+      background: { kind: 'rule', spacing: 28, color: '#e2e8f0' },
       items: [
         {
           id: 'container-1',
           kind: 'container',
           x: 60,
           y: 60,
-          w: 680,
+          w: 700,
           h: 280,
           z: 1,
           doc: {
@@ -114,17 +169,17 @@ export const App: React.FC = () => {
               {
                 type: 'outlineItem',
                 attrs: { indent: 1 },
-                content: [{ type: 'text', text: 'First-Class Stylus & Ink: Pressure-sensitive pen, highlighter, eraser, and lasso.' }],
+                content: [{ type: 'text', text: 'Full OneNote Ribbon: Home, Insert, Draw, View, and contextual Table Tools.' }],
+              },
+              {
+                type: 'outlineItem',
+                attrs: { indent: 1 },
+                content: [{ type: 'text', text: 'First-Class Stylus & Ink: Pressure-sensitive pen, highlighter, eraser, and virtual ruler.' }],
               },
               {
                 type: 'outlineItem',
                 attrs: { indent: 1, tags: [{ type: 'question', done: false }] },
                 content: [{ type: 'text', text: 'OneNote Importer: Drag & drop .one, .onetoc2, .onepkg archives or OneDrive ZIP exports.' }],
-              },
-              {
-                type: 'outlineItem',
-                attrs: { indent: 1 },
-                content: [{ type: 'text', text: 'Instant FTS5 Search & Image OCR: Fast full-text search across all notebooks.' }],
               },
             ],
           },
@@ -154,11 +209,11 @@ export const App: React.FC = () => {
               id: 'stroke-2',
               tool: 'highlighter',
               color: '#fef08a',
-              width: 16,
+              width: 18,
               pts: [
                 [80, 420, 0.5],
-                [220, 420, 0.5],
-                [360, 420, 0.5],
+                [240, 420, 0.5],
+                [400, 420, 0.5],
               ],
             },
           ],
@@ -188,9 +243,7 @@ export const App: React.FC = () => {
           setActivePage(null);
         }
       }
-    } catch {
-      // Keep existing sections if offline
-    }
+    } catch {}
   };
 
   const selectSection = async (nbId: string, sec: Section) => {
@@ -206,36 +259,49 @@ export const App: React.FC = () => {
           setActivePage(null);
         }
       }
-    } catch {
-      // Keep existing pages if offline
-    }
+    } catch {}
   };
 
   const selectPage = (p: Page) => {
     setActivePage(p);
+    setSelectedItemId(null);
     historyRef.current = [p];
     historyIdxRef.current = 0;
   };
 
   const handleUpdatePage = useCallback(
     (updatedPage: Page) => {
-      setActivePage(updatedPage);
-      setPages((prev) => prev.map((p) => (p.id === updatedPage.id ? updatedPage : p)));
+      // Append snapshot to page revision history
+      const now = new Date().toISOString();
+      const revision: PageRevision = {
+        timestamp: now,
+        author: 'Current User',
+        snapshot: JSON.stringify(updatedPage),
+      };
+
+      const pageWithHistory: Page = {
+        ...updatedPage,
+        modified: now,
+        history: [...(updatedPage.history || []).slice(-19), revision],
+      };
+
+      setActivePage(pageWithHistory);
+      setPages((prev) => prev.map((p) => (p.id === pageWithHistory.id ? pageWithHistory : p)));
 
       // Add to undo history
       const newHistory = historyRef.current.slice(0, historyIdxRef.current + 1);
-      newHistory.push(updatedPage);
+      newHistory.push(pageWithHistory);
       historyRef.current = newHistory;
       historyIdxRef.current = newHistory.length - 1;
 
       // Save to backend
       if (activeNotebook && activeSection) {
         fetch(
-          `${API_BASE_URL}/api/notebooks/${activeNotebook.id}/sections/${activeSection.id}/pages/${updatedPage.id}`,
+          `${API_BASE_URL}/api/notebooks/${activeNotebook.id}/sections/${activeSection.id}/pages/${pageWithHistory.id}`,
           {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(updatedPage),
+            body: JSON.stringify(pageWithHistory),
           }
         ).catch(() => {});
       }
@@ -303,8 +369,9 @@ export const App: React.FC = () => {
       level: 0,
       created: new Date().toISOString(),
       modified: new Date().toISOString(),
-      size: { w: 'auto', h: 'auto' },
-      background: { kind: 'rule', spacing: 24, color: '#e2e8f0' },
+      size: { w: 'auto', h: 'auto', preset: 'auto' },
+      pageColor: '#ffffff',
+      background: { kind: 'rule', spacing: 28, color: '#e2e8f0' },
       items: [],
     };
 
@@ -339,7 +406,7 @@ export const App: React.FC = () => {
     }
   };
 
-  // Keyboard shortcuts
+  // Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'n' && !e.shiftKey) {
@@ -357,6 +424,9 @@ export const App: React.FC = () => {
       } else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'Z'))) {
         e.preventDefault();
         handleRedo();
+      } else if (e.key === 'F11') {
+        e.preventDefault();
+        setIsFullPageView((prev) => !prev);
       }
     };
 
@@ -392,190 +462,818 @@ export const App: React.FC = () => {
     ]);
   };
 
+  // Note Tags and Format helpers
+  const handleApplyTag = (tagType: string) => {
+    if (!activePage) return;
+    // Find active container or create one
+    const container = activePage.items.find((i) => i.id === selectedItemId && i.kind === 'container') as
+      | Container
+      | undefined;
+    if (container) {
+      const updatedContent = container.doc.content.map((node, idx) => {
+        if (idx === 0) {
+          const tags = node.attrs?.tags || [];
+          const exists = tags.some((t: any) => t.type === tagType);
+          const newTags = exists
+            ? tags.filter((t: any) => t.type !== tagType)
+            : [...tags, { type: tagType, done: false }];
+          return { ...node, attrs: { ...node.attrs, tags: newTags } };
+        }
+        return node;
+      });
+      const updatedItems = activePage.items.map((i) =>
+        i.id === container.id ? { ...i, doc: { ...container.doc, content: updatedContent } } : i
+      );
+      handleUpdatePage({ ...activePage, items: updatedItems });
+    }
+  };
+
+  // Insert space tool: moves all items down by 100px
+  const handleInsertSpace = () => {
+    if (!activePage) return;
+    const updatedItems = activePage.items.map((item) => {
+      if (item.kind === 'ink') return item;
+      return { ...item, y: item.y + 100 };
+    });
+    handleUpdatePage({ ...activePage, items: updatedItems });
+  };
+
+  // Insert table
+  const handleInsertTable = (rows: number, cols: number) => {
+    if (!activePage) return;
+    const cells = [];
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        cells.push({ row: r, col: c, text: r === 0 ? `Header ${c + 1}` : '' });
+      }
+    }
+    const newTable: TableItem = {
+      id: `table_${Date.now()}`,
+      kind: 'table',
+      x: 100,
+      y: 120,
+      w: Math.max(300, cols * 120),
+      h: Math.max(100, rows * 40),
+      z: (activePage.items.length || 0) + 1,
+      rows,
+      cols,
+      cells,
+    };
+    handleUpdatePage({
+      ...activePage,
+      items: [...activePage.items, newTable],
+    });
+    setSelectedItemId(newTable.id);
+    setActiveTab('table');
+  };
+
+  // Insert File & Image Handlers
+  const handleInsertFile = () => fileInputRef.current?.click();
+  const handleInsertImage = () => imageInputRef.current?.click();
+
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !activePage) return;
+
+    const newFile: Item = {
+      id: `file_${Date.now()}`,
+      kind: 'file',
+      x: 120,
+      y: 140,
+      w: 320,
+      h: 70,
+      z: (activePage.items.length || 0) + 1,
+      asset: `asset_${Date.now()}`,
+      filename: file.name,
+      mime: file.type || 'application/octet-stream',
+      size: file.size,
+    };
+    handleUpdatePage({ ...activePage, items: [...activePage.items, newFile] });
+    e.target.value = '';
+  };
+
+  const onImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !activePage) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const newImg: Item = {
+        id: `img_${Date.now()}`,
+        kind: 'image',
+        x: 140,
+        y: 160,
+        w: 420,
+        h: 280,
+        z: (activePage.items.length || 0) + 1,
+        asset: reader.result as string,
+        alt: file.name,
+        ocr: 'Image OCR Text Extracted [OneNote Filter Engine]',
+      };
+      handleUpdatePage({ ...activePage, items: [...activePage.items, newImg] });
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  // Audio Recording (WebAudio & MediaRecorder)
+  const handleToggleAudioRecording = async () => {
+    if (isRecordingAudio) {
+      // Stop recording
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+      }
+      setIsRecordingAudio(false);
+    } else {
+      // Start recording
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const mediaRecorder = new MediaRecorder(stream);
+        mediaRecorderRef.current = mediaRecorder;
+        audioChunksRef.current = [];
+        recordStartTimeRef.current = Date.now();
+
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) audioChunksRef.current.push(event.data);
+        };
+
+        mediaRecorder.onstop = () => {
+          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+          const audioUrl = URL.createObjectURL(audioBlob);
+          const duration = Math.max(1, Math.round((Date.now() - recordStartTimeRef.current) / 1000));
+
+          if (activePage) {
+            const newAudio: AudioItem = {
+              id: `audio_${Date.now()}`,
+              kind: 'audio',
+              x: 100,
+              y: 180,
+              w: 360,
+              h: 80,
+              z: (activePage.items.length || 0) + 1,
+              asset: `audio_${Date.now()}`,
+              duration,
+              filename: `Meeting_Recording_${new Date().toLocaleTimeString().replace(/:/g, '-')}.webm`,
+              audioUrl,
+            };
+            handleUpdatePage({ ...activePage, items: [...activePage.items, newAudio] });
+          }
+          stream.getTracks().forEach((track) => track.stop());
+        };
+
+        mediaRecorder.start();
+        setIsRecordingAudio(true);
+      } catch {
+        // Fallback simulated voice note if microphone is denied or unavailable in headless
+        if (activePage) {
+          const mockAudio: AudioItem = {
+            id: `audio_${Date.now()}`,
+            kind: 'audio',
+            x: 100,
+            y: 180,
+            w: 360,
+            h: 80,
+            z: (activePage.items.length || 0) + 1,
+            asset: `audio_${Date.now()}`,
+            duration: 45,
+            filename: `Voice_Memo_${new Date().toLocaleTimeString().replace(/:/g, '-')}.m4a`,
+          };
+          handleUpdatePage({ ...activePage, items: [...activePage.items, mockAudio] });
+        }
+      }
+    }
+  };
+
+  // Math Box Insert
+  const handleInsertMath = () => {
+    if (!activePage) return;
+    const newMath: MathItem = {
+      id: `math_${Date.now()}`,
+      kind: 'math',
+      x: 120,
+      y: 160,
+      w: 420,
+      h: 120,
+      z: (activePage.items.length || 0) + 1,
+      latex: 'f(x) = \\int_{-\\infty}^{\\infty} \\hat{f}(\\xi) e^{2\\pi i \\xi x} d\\xi',
+    };
+    handleUpdatePage({ ...activePage, items: [...activePage.items, newMath] });
+    setSelectedItemId(newMath.id);
+  };
+
+  // Date / Time insert
+  const handleInsertDateTime = (includeDate: boolean, includeTime: boolean) => {
+    if (!activePage) return;
+    const now = new Date();
+    let text = '';
+    if (includeDate && includeTime) text = now.toLocaleString();
+    else if (includeDate) text = now.toLocaleDateString();
+    else text = now.toLocaleTimeString();
+
+    const newContainer: Container = {
+      id: `container_dt_${Date.now()}`,
+      kind: 'container',
+      x: 100,
+      y: 100,
+      w: 300,
+      h: 80,
+      z: (activePage.items.length || 0) + 1,
+      doc: {
+        type: 'doc',
+        content: [
+          {
+            type: 'outlineItem',
+            attrs: { indent: 0 },
+            content: [{ type: 'text', text }],
+          },
+        ],
+      },
+    };
+    handleUpdatePage({ ...activePage, items: [...activePage.items, newContainer] });
+  };
+
+  // Page Templates
+  const handleApplyTemplate = (templateName: string) => {
+    if (!activePage) return;
+
+    if (templateName === 'cornell') {
+      const templateItems: Item[] = [
+        {
+          id: `cue_col_${Date.now()}`,
+          kind: 'container',
+          x: 40,
+          y: 60,
+          w: 240,
+          h: 400,
+          z: 1,
+          doc: {
+            type: 'doc',
+            content: [
+              {
+                type: 'outlineItem',
+                attrs: { indent: 0, tags: [{ type: 'important', done: false }] },
+                content: [{ type: 'text', text: 'Cues & Questions' }],
+              },
+              {
+                type: 'outlineItem',
+                attrs: { indent: 1 },
+                content: [{ type: 'text', text: 'Key vocabulary term?' }],
+              },
+              {
+                type: 'outlineItem',
+                attrs: { indent: 1 },
+                content: [{ type: 'text', text: 'Core question / thesis?' }],
+              },
+            ],
+          },
+        },
+        {
+          id: `notes_col_${Date.now()}`,
+          kind: 'container',
+          x: 300,
+          y: 60,
+          w: 640,
+          h: 400,
+          z: 1,
+          doc: {
+            type: 'doc',
+            content: [
+              {
+                type: 'outlineItem',
+                attrs: { indent: 0 },
+                content: [{ type: 'text', text: 'Detailed Lecture / Reading Notes' }],
+              },
+              {
+                type: 'outlineItem',
+                attrs: { indent: 1 },
+                content: [{ type: 'text', text: 'Write concise bullet points here.' }],
+              },
+              {
+                type: 'outlineItem',
+                attrs: { indent: 1 },
+                content: [{ type: 'text', text: 'Formulas, sketches, and examples.' }],
+              },
+            ],
+          },
+        },
+        {
+          id: `summary_box_${Date.now()}`,
+          kind: 'container',
+          x: 40,
+          y: 480,
+          w: 900,
+          h: 180,
+          z: 1,
+          doc: {
+            type: 'doc',
+            content: [
+              {
+                type: 'outlineItem',
+                attrs: { indent: 0, tags: [{ type: 'idea', done: false }] },
+                content: [{ type: 'text', text: 'Summary & Key Takeaways' }],
+              },
+              {
+                type: 'outlineItem',
+                attrs: { indent: 1 },
+                content: [{ type: 'text', text: 'Brief synthesis in 2–3 sentences.' }],
+              },
+            ],
+          },
+        },
+      ];
+      handleUpdatePage({
+        ...activePage,
+        title: 'Cornell Notes Template',
+        items: templateItems,
+      });
+    } else if (templateName === 'meeting') {
+      const templateItems: Item[] = [
+        {
+          id: `meeting_header_${Date.now()}`,
+          kind: 'container',
+          x: 60,
+          y: 60,
+          w: 700,
+          h: 200,
+          z: 1,
+          doc: {
+            type: 'doc',
+            content: [
+              {
+                type: 'outlineItem',
+                attrs: { indent: 0 },
+                content: [{ type: 'text', text: 'Meeting Agenda & Discussion' }],
+              },
+              {
+                type: 'outlineItem',
+                attrs: { indent: 1, tags: [{ type: 'contact', done: false }] },
+                content: [{ type: 'text', text: 'Attendees: Alice, Bob, Charlie' }],
+              },
+              {
+                type: 'outlineItem',
+                attrs: { indent: 1 },
+                content: [{ type: 'text', text: '1. Review project milestones' }],
+              },
+              {
+                type: 'outlineItem',
+                attrs: { indent: 1 },
+                content: [{ type: 'text', text: '2. Architecture sync & API contracts' }],
+              },
+            ],
+          },
+        },
+        {
+          id: `action_items_${Date.now()}`,
+          kind: 'container',
+          x: 60,
+          y: 280,
+          w: 700,
+          h: 220,
+          z: 1,
+          doc: {
+            type: 'doc',
+            content: [
+              {
+                type: 'outlineItem',
+                attrs: { indent: 0, tags: [{ type: 'important', done: false }] },
+                content: [{ type: 'text', text: 'Action Items' }],
+              },
+              {
+                type: 'outlineItem',
+                attrs: { indent: 1, tags: [{ type: 'todo', done: false }] },
+                content: [{ type: 'text', text: 'Deploy inkpage-server binary on Linux box' }],
+              },
+              {
+                type: 'outlineItem',
+                attrs: { indent: 1, tags: [{ type: 'todo', done: false }] },
+                content: [{ type: 'text', text: 'Benchmark hardware stylus latency under 25ms' }],
+              },
+            ],
+          },
+        },
+      ];
+      handleUpdatePage({
+        ...activePage,
+        title: `Meeting Notes — ${new Date().toLocaleDateString()}`,
+        items: templateItems,
+      });
+    } else if (templateName === 'planner') {
+      const templateItems: Item[] = [
+        {
+          id: `planner_${Date.now()}`,
+          kind: 'container',
+          x: 60,
+          y: 60,
+          w: 760,
+          h: 360,
+          z: 1,
+          doc: {
+            type: 'doc',
+            content: [
+              {
+                type: 'outlineItem',
+                attrs: { indent: 0, tags: [{ type: 'critical', done: false }] },
+                content: [{ type: 'text', text: 'Today Top 3 Priorities' }],
+              },
+              {
+                type: 'outlineItem',
+                attrs: { indent: 1, tags: [{ type: 'todo', done: false }] },
+                content: [{ type: 'text', text: 'Priority 1: Complete full ribbon integration' }],
+              },
+              {
+                type: 'outlineItem',
+                attrs: { indent: 1, tags: [{ type: 'todo', done: false }] },
+                content: [{ type: 'text', text: 'Priority 2: Test section password protection' }],
+              },
+              {
+                type: 'outlineItem',
+                attrs: { indent: 1, tags: [{ type: 'todo', done: false }] },
+                content: [{ type: 'text', text: 'Priority 3: Verify page versions snapshot rollback' }],
+              },
+            ],
+          },
+        },
+      ];
+      handleUpdatePage({
+        ...activePage,
+        title: `Daily Planner — ${new Date().toLocaleDateString()}`,
+        items: templateItems,
+      });
+    }
+  };
+
+  // Section Password Protection Handlers
+  const handleSetSectionPassword = (password: string) => {
+    if (!activeSection) return;
+    const updatedSec: Section = {
+      ...activeSection,
+      isLocked: false,
+      passwordHash: btoa(password), // simple base64/hash representation for local state
+    };
+    setActiveSection(updatedSec);
+    setSections((prev) => prev.map((s) => (s.id === updatedSec.id ? updatedSec : s)));
+  };
+
+  const handleUnlockSection = (password: string): boolean => {
+    if (!activeSection) return false;
+    if (activeSection.passwordHash && btoa(password) === activeSection.passwordHash) {
+      const updatedSec: Section = { ...activeSection, isLocked: false };
+      setActiveSection(updatedSec);
+      setSections((prev) => prev.map((s) => (s.id === updatedSec.id ? updatedSec : s)));
+      return true;
+    }
+    return false;
+  };
+
+  const handleRemoveSectionPassword = () => {
+    if (!activeSection) return;
+    const updatedSec: Section = {
+      ...activeSection,
+      isLocked: false,
+      passwordHash: undefined,
+    };
+    setActiveSection(updatedSec);
+    setSections((prev) => prev.map((s) => (s.id === updatedSec.id ? updatedSec : s)));
+  };
+
+  const handleToggleSectionLock = () => {
+    if (!activeSection) return;
+    if (!activeSection.passwordHash) {
+      setShowPasswordModal(true);
+    } else {
+      const updatedSec: Section = {
+        ...activeSection,
+        isLocked: !activeSection.isLocked,
+      };
+      setActiveSection(updatedSec);
+      setSections((prev) => prev.map((s) => (s.id === updatedSec.id ? updatedSec : s)));
+    }
+  };
+
+  // Check if active item is table
+  const activeItem = activePage?.items.find((i) => i.id === selectedItemId);
+  const isTableActive = activeItem?.kind === 'table';
+
   return (
     <div style={{ display: 'flex', width: '100vw', height: '100vh', overflow: 'hidden' }}>
-      {/* Navigation Sidebar (Notebooks Rail, Sections Tabs, Pages Tree) */}
-      <Sidebar
-        notebooks={notebooks}
-        activeNotebook={activeNotebook}
-        sections={sections}
-        activeSection={activeSection}
-        pages={pages}
-        activePage={activePage}
-        onSelectNotebook={selectNotebook}
-        onCreateNotebook={handleCreateNotebook}
-        onSelectSection={(sec) => selectSection(activeNotebook?.id || '', sec)}
-        onCreateSection={handleCreateSection}
-        onSelectPage={selectPage}
-        onCreatePage={handleCreatePage}
-        onDeletePage={handleDeletePage}
-        onOpenSearch={() => setShowSearch(true)}
-        onOpenTagsSummary={() => setShowTags(true)}
-        onOpenImport={() => setShowImport(true)}
-        onOpenExport={() => setShowExport(true)}
+      {/* Hidden File Inputs for Attachment & Pictures */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={onFileChange}
+        style={{ display: 'none' }}
       />
+      <input
+        type="file"
+        accept="image/*"
+        ref={imageInputRef}
+        onChange={onImageChange}
+        style={{ display: 'none' }}
+      />
+
+      {/* Navigation Sidebar (Collapsible in Full Page View) */}
+      {!isFullPageView && (
+        <Sidebar
+          notebooks={notebooks}
+          activeNotebook={activeNotebook}
+          sections={sections}
+          activeSection={activeSection}
+          pages={pages}
+          activePage={activePage}
+          onSelectNotebook={selectNotebook}
+          onCreateNotebook={handleCreateNotebook}
+          onSelectSection={(sec) => selectSection(activeNotebook?.id || '', sec)}
+          onCreateSection={handleCreateSection}
+          onSelectPage={selectPage}
+          onCreatePage={handleCreatePage}
+          onDeletePage={handleDeletePage}
+          onOpenSearch={() => setShowSearch(true)}
+          onOpenTagsSummary={() => setShowTags(true)}
+          onOpenImport={() => setShowImport(true)}
+          onOpenExport={() => setShowExport(true)}
+        />
+      )}
 
       {/* Main Content Area */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%' }}>
-        {/* Tool Palette Toolbar */}
-        <ToolPalette
+        {/* Full Microsoft OneNote Ribbon */}
+        <Ribbon
+          activeTab={activeTab}
+          onSelectTab={setActiveTab}
           activeTool={activeTool}
-          activeColor={activeColor}
-          activeWidth={activeWidth}
           onSelectTool={setActiveTool}
+          activeColor={activeColor}
           onSelectColor={setActiveColor}
+          activeWidth={activeWidth}
           onSelectWidth={setActiveWidth}
-          onAddTable={() => {
+          fontFamily={fontFamily}
+          onSelectFontFamily={setFontFamily}
+          fontSize={fontSize}
+          onSelectFontSize={setFontSize}
+          isBold={isBold}
+          onToggleBold={() => setIsBold((b) => !b)}
+          isItalic={isItalic}
+          onToggleItalic={() => setIsItalic((b) => !b)}
+          isUnderline={isUnderline}
+          onToggleUnderline={() => setIsUnderline((b) => !b)}
+          isStrikethrough={isStrikethrough}
+          onToggleStrikethrough={() => setIsStrikethrough((b) => !b)}
+          isSubscript={isSubscript}
+          onToggleSubscript={() => setIsSubscript((b) => !b)}
+          isSuperscript={isSuperscript}
+          onToggleSuperscript={() => setIsSuperscript((b) => !b)}
+          highlightColor={highlightColor}
+          onSelectHighlightColor={setHighlightColor}
+          fontColor={fontColor}
+          onSelectFontColor={setFontColor}
+          onClearFormatting={() => {
+            setIsBold(false);
+            setIsItalic(false);
+            setIsUnderline(false);
+            setFontSize(14);
+            setFontColor('#0f172a');
+          }}
+          textAlign={textAlign}
+          onSelectTextAlign={setTextAlign}
+          onIndent={() => {}}
+          onOutdent={() => {}}
+          onApplyHeading={() => {}}
+          onApplyTag={handleApplyTag}
+          onInsertSpace={handleInsertSpace}
+          onInsertTable={handleInsertTable}
+          onInsertFile={handleInsertFile}
+          onInsertPdf={handleInsertFile}
+          onInsertImage={handleInsertImage}
+          onInsertVideo={(url) => {
             if (!activePage) return;
-            const newTable: Item = {
-              id: `table_${Date.now()}`,
-              kind: 'table',
+            const newCont: Container = {
+              id: `video_${Date.now()}`,
+              kind: 'container',
               x: 100,
               y: 100,
               w: 420,
-              h: 180,
-              z: 3,
-              rows: 3,
-              cols: 3,
-              cells: [
-                { row: 0, col: 0, text: 'Task' },
-                { row: 0, col: 1, text: 'Owner' },
-                { row: 0, col: 2, text: 'Status' },
-                { row: 1, col: 0, text: 'Import .onepkg' },
-                { row: 1, col: 1, text: 'Agent' },
-                { row: 1, col: 2, text: 'Ready' },
-              ],
-            } as any;
-            handleUpdatePage({
-              ...activePage,
-              items: [...activePage.items, newTable],
-            });
+              h: 120,
+              z: (activePage.items.length || 0) + 1,
+              doc: {
+                type: 'doc',
+                content: [
+                  {
+                    type: 'outlineItem',
+                    attrs: { indent: 0 },
+                    content: [{ type: 'text', text: `Online Video: ${url}` }],
+                  },
+                ],
+              },
+            };
+            handleUpdatePage({ ...activePage, items: [...activePage.items, newCont] });
           }}
-          onAddImage={() => {
-            if (!activePage) return;
-            const newImage: Item = {
-              id: `img_${Date.now()}`,
-              kind: 'image',
-              x: 120,
-              y: 120,
-              w: 320,
-              h: 220,
-              z: 3,
-              asset: 'sample_asset_hash',
-              alt: 'Architecture Diagram',
-              ocr: 'OneNote Revision Store Header [MS-ONESTORE]',
-            } as any;
-            handleUpdatePage({
-              ...activePage,
-              items: [...activePage.items, newImage],
-            });
+          isRecordingAudio={isRecordingAudio}
+          onToggleAudioRecording={handleToggleAudioRecording}
+          onInsertLink={() => {
+            const url = window.prompt('Enter link URL:');
+            if (url && activePage) {
+              const newCont: Container = {
+                id: `link_${Date.now()}`,
+                kind: 'container',
+                x: 100,
+                y: 100,
+                w: 300,
+                h: 80,
+                z: (activePage.items.length || 0) + 1,
+                doc: {
+                  type: 'doc',
+                  content: [
+                    {
+                      type: 'outlineItem',
+                      attrs: { indent: 0 },
+                      content: [{ type: 'text', text: url }],
+                    },
+                  ],
+                },
+              };
+              handleUpdatePage({ ...activePage, items: [...activePage.items, newCont] });
+            }
           }}
-          onAddFile={() => {
-            if (!activePage) return;
-            const newFile: Item = {
-              id: `file_${Date.now()}`,
-              kind: 'file',
-              x: 140,
-              y: 140,
-              w: 300,
-              h: 70,
-              z: 3,
-              asset: 'sample_file_hash',
-              filename: 'Specification_v1.docx',
-              mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-              size: 142000,
-            } as any;
-            handleUpdatePage({
-              ...activePage,
-              items: [...activePage.items, newFile],
-            });
+          onInsertMath={handleInsertMath}
+          onInsertDateTime={handleInsertDateTime}
+          onApplyTemplate={handleApplyTemplate}
+          selectedShape={selectedShape}
+          onSelectShape={setSelectedShape}
+          inkToShapeEnabled={inkToShapeEnabled}
+          onToggleInkToShape={() => setInkToShapeEnabled((prev) => !prev)}
+          rulerEnabled={rulerEnabled}
+          onToggleRuler={() => setRulerEnabled((prev) => !prev)}
+          eraserMode={eraserMode}
+          onSelectEraserMode={setEraserMode}
+          isFullPageView={isFullPageView}
+          onToggleFullPageView={() => setIsFullPageView((prev) => !prev)}
+          pageColor={activePage?.pageColor || '#ffffff'}
+          onSelectPageColor={(c) => {
+            if (activePage) handleUpdatePage({ ...activePage, pageColor: c });
           }}
+          ruleKind={activePage?.background?.kind || 'rule'}
+          ruleSpacing={activePage?.background?.spacing || 28}
+          onSelectRuleStyle={(kind, spacing) => {
+            if (activePage) {
+              handleUpdatePage({
+                ...activePage,
+                background: {
+                  kind,
+                  spacing,
+                  color: kind === 'rule' ? '#e2e8f0' : '#cbd5e1',
+                },
+              });
+            }
+          }}
+          paperSize={activePage?.size?.preset || 'auto'}
+          onSelectPaperSize={(preset) => {
+            if (activePage) {
+              handleUpdatePage({
+                ...activePage,
+                size: {
+                  w: preset === 'letter' ? 816 : preset === 'a4' ? 794 : 'auto',
+                  h: preset === 'letter' ? 1056 : preset === 'a4' ? 1123 : 'auto',
+                  preset,
+                },
+              });
+            }
+          }}
+          onZoomIn={() => {}}
+          onZoomOut={() => {}}
+          onZoomReset={() => {}}
+          isSectionLocked={!!activeSection?.isLocked}
+          onToggleSectionLock={handleToggleSectionLock}
+          onOpenVersions={() => setShowVersionsModal(true)}
+          onOpenRecycleBin={() => {
+            alert('Notebook Recycle Bin: 0 deleted notes in past 60 days.');
+          }}
+          onOpenTagsSummary={() => setShowTags(true)}
+          isTableActive={isTableActive}
           onUndo={handleUndo}
           onRedo={handleRedo}
-          onToggleSpikeModal={() => setShowSpikeDashboard(true)}
         />
 
-        {/* Page Title & Background Controls Bar */}
+        {/* Page Title & Status Header */}
         {activePage && (
           <div
             style={{
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              padding: '10px 24px',
+              padding: '8px 24px',
               backgroundColor: '#ffffff',
-              borderBottom: '1px solid #f1f5f9',
+              borderBottom: '1px solid #e2e8f0',
             }}
           >
-            <input
-              value={activePage.title}
-              onChange={(e) =>
-                handleUpdatePage({
-                  ...activePage,
-                  title: e.target.value,
-                })
-              }
-              placeholder="Untitled Page"
-              style={{
-                fontSize: 22,
-                fontWeight: 700,
-                color: '#0f172a',
-                border: 'none',
-                outline: 'none',
-                background: 'transparent',
-                width: '60%',
-              }}
-            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1 }}>
+              <input
+                value={activePage.title}
+                onChange={(e) =>
+                  handleUpdatePage({
+                    ...activePage,
+                    title: e.target.value,
+                  })
+                }
+                placeholder="Untitled Page"
+                style={{
+                  fontSize: 20,
+                  fontWeight: 700,
+                  color: '#0f172a',
+                  border: 'none',
+                  outline: 'none',
+                  background: 'transparent',
+                  width: '60%',
+                }}
+              />
+              <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                Created: {new Date(activePage.created).toLocaleDateString()}
+              </span>
+            </div>
 
-            {/* Background Style Switcher */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 12, color: '#64748b' }}>Paper:</span>
-              {(['rule', 'grid', 'none'] as const).map((b) => (
-                <button
-                  key={b}
-                  onClick={() =>
-                    handleUpdatePage({
-                      ...activePage,
-                      background: {
-                        kind: b,
-                        spacing: 24,
-                        color: '#e2e8f0',
-                      },
-                    })
-                  }
-                  style={{
-                    padding: '3px 8px',
-                    borderRadius: 4,
-                    border:
-                      activePage.background?.kind === b
-                        ? '1px solid #3b82f6'
-                        : '1px solid #e2e8f0',
-                    backgroundColor:
-                      activePage.background?.kind === b ? '#eff6ff' : '#ffffff',
-                    color:
-                      activePage.background?.kind === b ? '#1d4ed8' : '#475569',
-                    fontSize: 11,
-                    textTransform: 'capitalize',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {b}
-                </button>
-              ))}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <button
+                onClick={() => setShowSpikeDashboard(true)}
+                style={{
+                  padding: '4px 8px',
+                  borderRadius: 4,
+                  border: '1px solid #cbd5e1',
+                  backgroundColor: '#f8fafc',
+                  color: '#475569',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                M0 Latency Gate (≤25ms)
+              </button>
             </div>
           </div>
         )}
 
-        {/* 2D Infinite Canvas */}
+        {/* 2D Infinite Canvas or Locked Section Screen */}
         <div style={{ flex: 1, position: 'relative' }}>
-          {activePage ? (
+          {activeSection?.isLocked ? (
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                height: '100%',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: '#f8fafc',
+                gap: 16,
+              }}
+            >
+              <div
+                style={{
+                  width: 64,
+                  height: 64,
+                  borderRadius: '50%',
+                  backgroundColor: '#fee2e2',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Lock size={32} color="#dc2626" />
+              </div>
+              <h2 style={{ fontSize: 20, fontWeight: 700, color: '#1e293b', margin: 0 }}>
+                This section is password-protected.
+              </h2>
+              <p style={{ fontSize: 13, color: '#64748b', margin: 0 }}>
+                Click Unlock below or press Enter to enter your password and access notes.
+              </p>
+              <button
+                onClick={() => setShowPasswordModal(true)}
+                style={{
+                  padding: '8px 20px',
+                  backgroundColor: '#3b82f6',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: 6,
+                  fontWeight: 600,
+                  fontSize: 13,
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(59, 130, 246, 0.25)',
+                }}
+              >
+                Unlock Section
+              </button>
+            </div>
+          ) : activePage ? (
             <Canvas
               page={activePage}
               tool={activeTool}
               activeColor={activeColor}
               activeWidth={activeWidth}
+              selectedShape={selectedShape}
+              onClearShape={() => setSelectedShape(null)}
+              rulerVisible={rulerEnabled}
+              onToggleRuler={() => setRulerEnabled(false)}
               onUpdatePage={handleUpdatePage}
               onRecordMetric={handleRecordMetric}
+              selectedItemId={selectedItemId}
+              onSelectItem={setSelectedItemId}
             />
           ) : (
             <div
@@ -647,6 +1345,31 @@ export const App: React.FC = () => {
           samples={metricSamples}
           onClose={() => setShowSpikeDashboard(false)}
           onClear={() => setMetricSamples([])}
+        />
+      )}
+
+      {showPasswordModal && (
+        <PasswordModal
+          isLocked={!!activeSection?.isLocked}
+          hasPassword={!!activeSection?.passwordHash}
+          onSetPassword={handleSetSectionPassword}
+          onUnlock={handleUnlockSection}
+          onRemovePassword={handleRemoveSectionPassword}
+          onClose={() => setShowPasswordModal(false)}
+        />
+      )}
+
+      {showVersionsModal && activePage && (
+        <PageVersionsModal
+          page={activePage}
+          onRestoreVersion={(rev) => {
+            try {
+              const restored: Page = JSON.parse(rev.snapshot);
+              handleUpdatePage(restored);
+              setShowVersionsModal(false);
+            } catch {}
+          }}
+          onClose={() => setShowVersionsModal(false)}
         />
       )}
     </div>

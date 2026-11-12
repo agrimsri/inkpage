@@ -1,16 +1,35 @@
-import React, { useState, useRef, useEffect } from 'react';
-import type { Page, Item, Container, InkGroup, ImageItem, FileItem, TableItem, MathItem, ShapeItem } from '@inkpage/format';
+import React, { useState, useRef } from 'react';
+import type {
+  Page,
+  Item,
+  Container,
+  InkGroup,
+  ImageItem,
+  FileItem,
+  TableItem,
+  TableCell,
+  MathItem,
+  ShapeItem,
+  ShapeType,
+  AudioItem,
+} from '@inkpage/format';
 import { OutlineEditor } from './OutlineEditor';
 import { InkCanvas } from './InkCanvas';
+import { VirtualRuler } from './VirtualRuler';
+import { MathBox } from './MathBox';
+import { AudioPlayerWidget } from './AudioPlayerWidget';
 import {
-  FileText,
   GripHorizontal,
   Trash2,
   Download,
   Image as ImageIcon,
-  Table as TableIcon,
+  Plus,
+  ArrowRight,
   Maximize2,
   FileBox,
+  Rows,
+  Columns,
+  Palette,
 } from 'lucide-react';
 
 export interface CanvasProps {
@@ -18,8 +37,33 @@ export interface CanvasProps {
   tool: 'select' | 'text' | 'pen' | 'highlighter' | 'eraser' | 'lasso' | 'table' | 'math';
   activeColor: string;
   activeWidth: number;
+  selectedShape?: ShapeType | null;
+  onClearShape?: () => void;
+  rulerVisible?: boolean;
+  onToggleRuler?: () => void;
   onUpdatePage: (updatedPage: Page) => void;
   onRecordMetric?: (latency: number, pointerType: string, pressure: number, coalesced: number) => void;
+  selectedItemId?: string | null;
+  onSelectItem?: (id: string | null) => void;
+}
+
+function getStarPoints(w: number, h: number, points = 5, innerRatio = 0.5): string {
+  const cx = w / 2;
+  const cy = h / 2;
+  const rx = w / 2;
+  const ry = h / 2;
+  const pts: string[] = [];
+  const step = Math.PI / points;
+  let angle = -Math.PI / 2;
+  for (let i = 0; i < 2 * points; i++) {
+    const rCurrentX = i % 2 === 0 ? rx : rx * innerRatio;
+    const rCurrentY = i % 2 === 0 ? ry : ry * innerRatio;
+    const x = cx + rCurrentX * Math.cos(angle);
+    const y = cy + rCurrentY * Math.sin(angle);
+    pts.push(`${x},${y}`);
+    angle += step;
+  }
+  return pts.join(' ');
 }
 
 export const Canvas: React.FC<CanvasProps> = ({
@@ -27,18 +71,52 @@ export const Canvas: React.FC<CanvasProps> = ({
   tool,
   activeColor,
   activeWidth,
+  selectedShape,
+  onClearShape,
+  rulerVisible = false,
+  onToggleRuler,
   onUpdatePage,
   onRecordMetric,
+  selectedItemId: externalSelectedId,
+  onSelectItem: externalSetSelectedId,
 }) => {
   const [zoom, setZoom] = useState<number>(1.0);
   const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [internalSelectedId, setInternalSelectedId] = useState<string | null>(null);
+
+  const selectedItemId = externalSelectedId !== undefined ? externalSelectedId : internalSelectedId;
+  const setSelectedItemId = (id: string | null) => {
+    if (externalSetSelectedId) externalSetSelectedId(id);
+    else setInternalSelectedId(id);
+  };
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const isPanningRef = useRef<boolean>(false);
   const panStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-  const draggingItemRef = useRef<{ id: string; startX: number; startY: number; initX: number; initY: number } | null>(null);
-  const resizingItemRef = useRef<{ id: string; startX: number; startY: number; initW: number; initH: number } | null>(null);
+  const draggingItemRef = useRef<{
+    id: string;
+    startX: number;
+    startY: number;
+    initX: number;
+    initY: number;
+    isShift: boolean;
+  } | null>(null);
+  const resizingItemRef = useRef<{
+    id: string;
+    startX: number;
+    startY: number;
+    initW: number;
+    initH: number;
+    mode: 'both' | 'horizontal';
+  } | null>(null);
+
+  // Shape interactive drawing state
+  const [drawingShape, setDrawingShape] = useState<{
+    startX: number;
+    startY: number;
+    currX: number;
+    currY: number;
+  } | null>(null);
 
   // Wheel zoom and pan
   const handleWheel = (e: React.WheelEvent) => {
@@ -54,29 +132,45 @@ export const Canvas: React.FC<CanvasProps> = ({
     }
   };
 
-  // Canvas-level pointer events for panning and creating items
+  // Canvas-level pointer events for panning, creating items & shapes
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     // If Space key is held or middle click, start panning
-    if (e.button === 1 || e.buttons === 4 || (e.button === 0 && e.shiftKey)) {
+    if (e.button === 1 || e.buttons === 4 || (e.button === 0 && e.shiftKey && !draggingItemRef.current && !selectedShape)) {
       isPanningRef.current = true;
       panStartRef.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
       return;
     }
 
-    // If clicking on empty canvas with 'text' or 'select' tool
-    if (e.target === containerRef.current || (e.target as HTMLElement).classList.contains('canvas-background')) {
-      if (tool === 'text') {
-        const rect = containerRef.current?.getBoundingClientRect();
-        if (!rect) return;
-        const x = (e.clientX - rect.left - pan.x) / zoom;
-        const y = (e.clientY - rect.top - pan.y) / zoom;
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const canvasX = (e.clientX - rect.left - pan.x) / zoom;
+    const canvasY = (e.clientY - rect.top - pan.y) / zoom;
 
+    // Drawing a shape
+    if (selectedShape) {
+      setDrawingShape({
+        startX: canvasX,
+        startY: canvasY,
+        currX: canvasX,
+        currY: canvasY,
+      });
+      return;
+    }
+
+    // Clicking on empty canvas
+    const isBackground =
+      e.target === containerRef.current ||
+      (e.target as HTMLElement).classList.contains('canvas-background') ||
+      (e.target as HTMLElement).classList.contains('canvas-paper-sheet');
+
+    if (isBackground) {
+      if (tool === 'text') {
         const newContainer: Container = {
           id: `container_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
           kind: 'container',
-          x: Math.round(x),
-          y: Math.round(y),
-          w: 500,
+          x: Math.round(canvasX),
+          y: Math.round(canvasY),
+          w: 520,
           h: 240,
           z: (page.items.length || 0) + 1,
           doc: {
@@ -111,6 +205,22 @@ export const Canvas: React.FC<CanvasProps> = ({
       return;
     }
 
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const canvasX = (e.clientX - rect.left - pan.x) / zoom;
+    const canvasY = (e.clientY - rect.top - pan.y) / zoom;
+
+    // Update active shape drawing preview
+    if (drawingShape) {
+      setDrawingShape({
+        ...drawingShape,
+        currX: canvasX,
+        currY: canvasY,
+      });
+      return;
+    }
+
+    // Dragging item
     if (draggingItemRef.current) {
       const dx = (e.clientX - draggingItemRef.current.startX) / zoom;
       const dy = (e.clientY - draggingItemRef.current.startY) / zoom;
@@ -120,8 +230,8 @@ export const Canvas: React.FC<CanvasProps> = ({
         if (item.id === itemId) {
           return {
             ...item,
-            x: Math.max(20, Math.round(draggingItemRef.current!.initX + dx)),
-            y: Math.max(20, Math.round(draggingItemRef.current!.initY + dy)),
+            x: Math.max(10, Math.round(draggingItemRef.current!.initX + dx)),
+            y: Math.max(10, Math.round(draggingItemRef.current!.initY + dy)),
           };
         }
         return item;
@@ -131,17 +241,19 @@ export const Canvas: React.FC<CanvasProps> = ({
       return;
     }
 
+    // Resizing item
     if (resizingItemRef.current) {
       const dx = (e.clientX - resizingItemRef.current.startX) / zoom;
       const dy = (e.clientY - resizingItemRef.current.startY) / zoom;
       const itemId = resizingItemRef.current.id;
+      const mode = resizingItemRef.current.mode;
 
       const updatedItems = page.items.map((item) => {
         if (item.id === itemId) {
           return {
             ...item,
             w: Math.max(160, Math.round(resizingItemRef.current!.initW + dx)),
-            h: Math.max(80, Math.round(resizingItemRef.current!.initH + dy)),
+            h: mode === 'both' ? Math.max(80, Math.round(resizingItemRef.current!.initH + dy)) : item.h,
           };
         }
         return item;
@@ -151,9 +263,77 @@ export const Canvas: React.FC<CanvasProps> = ({
     }
   };
 
-  const handlePointerUp = () => {
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     isPanningRef.current = false;
-    draggingItemRef.current = null;
+
+    // Finalize shape creation
+    if (drawingShape && selectedShape) {
+      const x = Math.min(drawingShape.startX, drawingShape.currX);
+      const y = Math.min(drawingShape.startY, drawingShape.currY);
+      const w = Math.max(24, Math.abs(drawingShape.currX - drawingShape.startX));
+      const h = Math.max(24, Math.abs(drawingShape.currY - drawingShape.startY));
+
+      const newShape: ShapeItem = {
+        id: `shape_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        kind: 'shape',
+        shapeType: selectedShape,
+        x: Math.round(x),
+        y: Math.round(y),
+        w: Math.round(w),
+        h: Math.round(h),
+        z: (page.items.length || 0) + 1,
+        strokeColor: activeColor,
+        strokeWidth: activeWidth || 2,
+        fillColor: 'transparent',
+      };
+
+      onUpdatePage({
+        ...page,
+        items: [...page.items, newShape],
+      });
+      setDrawingShape(null);
+      if (onClearShape) onClearShape();
+      return;
+    }
+
+    // Handle Note Container Shift+Drag merge logic
+    if (draggingItemRef.current) {
+      const draggedId = draggingItemRef.current.id;
+      const draggedItem = page.items.find((i) => i.id === draggedId);
+      const wasShift = draggingItemRef.current.isShift || e.shiftKey;
+
+      if (draggedItem && draggedItem.kind === 'container') {
+        // Check for collision with another container
+        const targetContainer = page.items.find(
+          (i) =>
+            i.id !== draggedId &&
+            i.kind === 'container' &&
+            Math.abs(i.x - draggedItem.x) < 200 &&
+            Math.abs(i.y - draggedItem.y) < 160
+        ) as Container | undefined;
+
+        if (targetContainer && wasShift) {
+          // Merge draggedContainer paragraphs into targetContainer
+          const mergedDoc = {
+            ...targetContainer.doc,
+            content: [
+              ...(targetContainer.doc.content || []),
+              ...((draggedItem as Container).doc.content || []),
+            ],
+          };
+
+          const remainingItems = page.items
+            .filter((i) => i.id !== draggedId)
+            .map((i) => (i.id === targetContainer.id ? { ...i, doc: mergedDoc } : i));
+
+          onUpdatePage({ ...page, items: remainingItems });
+          setSelectedItemId(targetContainer.id);
+        }
+      }
+
+      draggingItemRef.current = null;
+    }
+
     resizingItemRef.current = null;
   };
 
@@ -163,8 +343,8 @@ export const Canvas: React.FC<CanvasProps> = ({
     kind: 'ink',
     x: 0,
     y: 0,
-    w: 2400,
-    h: 1800,
+    w: 3200,
+    h: 2400,
     z: 10,
     strokes: [],
   };
@@ -197,6 +377,60 @@ export const Canvas: React.FC<CanvasProps> = ({
     if (selectedItemId === itemId) setSelectedItemId(null);
   };
 
+  // Table Helpers
+  const handleTableCellUpdate = (tableId: string, row: number, col: number, text: string) => {
+    const updated = page.items.map((item) => {
+      if (item.id === tableId && item.kind === 'table') {
+        const tbl = item as TableItem;
+        const otherCells = tbl.cells.filter((c) => !(c.row === row && c.col === col));
+        return {
+          ...tbl,
+          cells: [...otherCells, { row, col, text }],
+        };
+      }
+      return item;
+    });
+    onUpdatePage({ ...page, items: updated });
+  };
+
+  const handleTableAddRow = (tableId: string) => {
+    const updated = page.items.map((item) => {
+      if (item.id === tableId && item.kind === 'table') {
+        const tbl = item as TableItem;
+        const newRows = tbl.rows + 1;
+        const newCells: TableCell[] = [...tbl.cells];
+        for (let c = 0; c < tbl.cols; c++) {
+          newCells.push({ row: tbl.rows, col: c, text: '' });
+        }
+        return { ...tbl, rows: newRows, cells: newCells };
+      }
+      return item;
+    });
+    onUpdatePage({ ...page, items: updated });
+  };
+
+  const handleTableAddCol = (tableId: string) => {
+    const updated = page.items.map((item) => {
+      if (item.id === tableId && item.kind === 'table') {
+        const tbl = item as TableItem;
+        const newCols = tbl.cols + 1;
+        const newCells: TableCell[] = [...tbl.cells];
+        for (let r = 0; r < tbl.rows; r++) {
+          newCells.push({ row: r, col: tbl.cols, text: '' });
+        }
+        return { ...tbl, cols: newCols, cells: newCells, w: tbl.w + 120 };
+      }
+      return item;
+    });
+    onUpdatePage({ ...page, items: updated });
+  };
+
+  // Page background & dimensions
+  const pageBgColor = page.pageColor || '#ffffff';
+  const paperPreset = page.size?.preset || 'auto';
+  const paperWidth = paperPreset === 'letter' ? 816 : paperPreset === 'a4' ? 794 : '100%';
+  const paperMinHeight = paperPreset === 'letter' ? 1056 : paperPreset === 'a4' ? 1123 : '100%';
+
   return (
     <div
       ref={containerRef}
@@ -210,8 +444,14 @@ export const Canvas: React.FC<CanvasProps> = ({
         width: '100%',
         height: '100%',
         overflow: 'hidden',
-        backgroundColor: '#ffffff',
-        cursor: tool === 'text' ? 'text' : isPanningRef.current ? 'grabbing' : 'default',
+        backgroundColor: '#f1f5f9',
+        cursor: selectedShape
+          ? 'crosshair'
+          : tool === 'text'
+          ? 'text'
+          : isPanningRef.current
+          ? 'grabbing'
+          : 'default',
         userSelect: 'none',
       }}
     >
@@ -226,60 +466,88 @@ export const Canvas: React.FC<CanvasProps> = ({
           height: '100%',
           transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
           transformOrigin: '0 0',
-          backgroundImage:
-            page.background?.kind === 'rule'
-              ? 'linear-gradient(#e2e8f0 1px, transparent 1px)'
-              : page.background?.kind === 'grid'
-              ? 'radial-gradient(#cbd5e1 1px, transparent 1px)'
-              : 'none',
-          backgroundSize:
-            page.background?.kind === 'rule'
-              ? `100% ${page.background.spacing || 28}px`
-              : '24px 24px',
         }}
       >
-        {/* Render Vector Ink Canvas */}
-        <InkCanvas
-          inkGroup={currentInkGroup}
-          tool={tool === 'pen' || tool === 'highlighter' || tool === 'eraser' ? tool : 'select'}
-          color={activeColor}
-          width={activeWidth}
-          zoom={zoom}
-          pan={pan}
-          onUpdateStrokes={handleUpdateStrokes}
-          onRecordMetric={onRecordMetric}
-        />
+        {/* Paper Sheet Representation */}
+        <div
+          className="canvas-paper-sheet"
+          style={{
+            position: 'relative',
+            width: paperWidth,
+            minHeight: paperMinHeight,
+            minWidth: 1600,
+            backgroundColor: pageBgColor,
+            boxShadow: paperPreset !== 'auto' ? '0 10px 40px rgba(0,0,0,0.08)' : 'none',
+            border: paperPreset !== 'auto' ? '1px solid #cbd5e1' : 'none',
+            backgroundImage:
+              page.background?.kind === 'rule'
+                ? `linear-gradient(${page.background.color || '#e2e8f0'} 1px, transparent 1px)`
+                : page.background?.kind === 'grid'
+                ? `radial-gradient(${page.background.color || '#cbd5e1'} 1px, transparent 1px)`
+                : 'none',
+            backgroundSize:
+              page.background?.kind === 'rule'
+                ? `100% ${page.background.spacing || 28}px`
+                : `${page.background?.spacing || 24}px ${page.background?.spacing || 24}px`,
+          }}
+        >
+          {/* Vector Ink Canvas Layer */}
+          <InkCanvas
+            inkGroup={currentInkGroup}
+            tool={tool === 'pen' || tool === 'highlighter' || tool === 'eraser' ? tool : 'select'}
+            color={activeColor}
+            width={activeWidth}
+            zoom={zoom}
+            pan={pan}
+            onUpdateStrokes={handleUpdateStrokes}
+            onRecordMetric={onRecordMetric}
+          />
 
-        {/* Render Canvas Items */}
-        {page.items.map((item) => {
-          if (item.kind === 'ink') return null; // Rendered via InkCanvas above
-          const isSelected = selectedItemId === item.id;
-
-          return (
+          {/* Render Active Shape Preview when drawing */}
+          {drawingShape && selectedShape && (
             <div
-              key={item.id}
               style={{
                 position: 'absolute',
-                left: item.x,
-                top: item.y,
-                width: item.w,
-                minHeight: item.h,
-                zIndex: item.z || 1,
-                border: isSelected ? '1px solid #3b82f6' : '1px solid transparent',
-                borderRadius: 6,
-                backgroundColor: isSelected ? '#ffffff' : 'transparent',
-                boxShadow: isSelected ? '0 4px 16px rgba(0,0,0,0.1)' : 'none',
-                transition: 'border-color 0.15s, box-shadow 0.15s',
+                left: Math.min(drawingShape.startX, drawingShape.currX),
+                top: Math.min(drawingShape.startY, drawingShape.currY),
+                width: Math.abs(drawingShape.currX - drawingShape.startX),
+                height: Math.abs(drawingShape.currY - drawingShape.startY),
+                border: `2px dashed ${activeColor}`,
+                pointerEvents: 'none',
+                zIndex: 999,
               }}
-              onClick={(e) => {
-                e.stopPropagation();
-                setSelectedItemId(item.id);
-              }}
-            >
-              {/* Item Drag Handle & Actions */}
-              {isSelected && (
+            />
+          )}
+
+          {/* Render Canvas Items */}
+          {page.items.map((item) => {
+            if (item.kind === 'ink') return null;
+            const isSelected = selectedItemId === item.id;
+
+            return (
+              <div
+                key={item.id}
+                style={{
+                  position: 'absolute',
+                  left: item.x,
+                  top: item.y,
+                  width: item.w,
+                  minHeight: item.h,
+                  zIndex: item.z || 1,
+                  borderRadius: 6,
+                  border: isSelected ? '1px solid #3b82f6' : '1px solid transparent',
+                  backgroundColor: isSelected ? '#ffffff' : 'transparent',
+                  boxShadow: isSelected ? '0 4px 20px rgba(0,0,0,0.08)' : 'none',
+                  transition: 'border-color 0.12s, box-shadow 0.12s',
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedItemId(item.id);
+                }}
+              >
+                {/* OneNote Container Anatomy: Top Gray Move Handle Bar */}
                 <div
-                  className="item-header"
+                  className="container-move-bar"
                   onPointerDown={(e) => {
                     e.stopPropagation();
                     draggingItemRef.current = {
@@ -288,23 +556,25 @@ export const Canvas: React.FC<CanvasProps> = ({
                       startY: e.clientY,
                       initX: item.x,
                       initY: item.y,
+                      isShift: e.shiftKey,
                     };
                   }}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    padding: '2px 8px',
-                    backgroundColor: '#f1f5f9',
+                    padding: '3px 8px',
+                    backgroundColor: isSelected ? '#e2e8f0' : 'transparent',
                     borderTopLeftRadius: 5,
                     borderTopRightRadius: 5,
                     cursor: 'grab',
-                    borderBottom: '1px solid #e2e8f0',
+                    opacity: isSelected ? 1 : 0,
+                    transition: 'opacity 0.15s',
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#64748b' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#475569' }}>
                     <GripHorizontal size={14} />
-                    <span style={{ fontSize: 11, fontWeight: 500, textTransform: 'capitalize' }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'capitalize' }}>
                       {item.kind}
                     </span>
                   </div>
@@ -325,174 +595,463 @@ export const Canvas: React.FC<CanvasProps> = ({
                     <Trash2 size={13} />
                   </button>
                 </div>
-              )}
 
-              {/* Item Content Rendering by Kind */}
-              <div style={{ padding: 8 }}>
-                {item.kind === 'container' && (
-                  <OutlineEditor
-                    container={item as Container}
-                    isSelected={isSelected}
-                    onUpdate={(updatedDoc) => {
-                      const updatedItems = page.items.map((i) =>
-                        i.id === item.id ? { ...i, doc: updatedDoc } : i
-                      );
-                      onUpdatePage({ ...page, items: updatedItems });
-                    }}
-                    onFocus={() => setSelectedItemId(item.id)}
-                  />
-                )}
+                {/* Item Content Rendering */}
+                <div style={{ padding: '4px 8px' }}>
+                  {item.kind === 'container' && (
+                    <OutlineEditor
+                      container={item as Container}
+                      isSelected={isSelected}
+                      onUpdate={(updatedDoc) => {
+                        const updatedItems = page.items.map((i) =>
+                          i.id === item.id ? { ...i, doc: updatedDoc } : i
+                        );
+                        onUpdatePage({ ...page, items: updatedItems });
+                      }}
+                      onFocus={() => setSelectedItemId(item.id)}
+                    />
+                  )}
 
-                {item.kind === 'image' && (
-                  <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+                  {item.kind === 'shape' && (
+                    <div style={{ width: '100%', height: item.h }}>
+                      <svg width="100%" height={item.h} style={{ overflow: 'visible' }}>
+                        <defs>
+                          <marker
+                            id="arrowhead"
+                            markerWidth="8"
+                            markerHeight="6"
+                            refX="7"
+                            refY="3"
+                            orient="auto"
+                          >
+                            <polygon points="0 0, 8 3, 0 6" fill={(item as ShapeItem).strokeColor} />
+                          </marker>
+                          <marker
+                            id="arrowhead-start"
+                            markerWidth="8"
+                            markerHeight="6"
+                            refX="1"
+                            refY="3"
+                            orient="auto"
+                          >
+                            <polygon points="8 0, 0 3, 8 6" fill={(item as ShapeItem).strokeColor} />
+                          </marker>
+                        </defs>
+
+                        {(item as ShapeItem).shapeType === 'line' && (
+                          <line
+                            x1={0}
+                            y1={0}
+                            x2={item.w}
+                            y2={item.h}
+                            stroke={(item as ShapeItem).strokeColor}
+                            strokeWidth={(item as ShapeItem).strokeWidth}
+                          />
+                        )}
+
+                        {(item as ShapeItem).shapeType === 'arrow' && (
+                          <line
+                            x1={0}
+                            y1={0}
+                            x2={item.w}
+                            y2={item.h}
+                            stroke={(item as ShapeItem).strokeColor}
+                            strokeWidth={(item as ShapeItem).strokeWidth}
+                            markerEnd="url(#arrowhead)"
+                          />
+                        )}
+
+                        {(item as ShapeItem).shapeType === 'doubleArrow' && (
+                          <line
+                            x1={0}
+                            y1={0}
+                            x2={item.w}
+                            y2={item.h}
+                            stroke={(item as ShapeItem).strokeColor}
+                            strokeWidth={(item as ShapeItem).strokeWidth}
+                            markerStart="url(#arrowhead-start)"
+                            markerEnd="url(#arrowhead)"
+                          />
+                        )}
+
+                        {(item as ShapeItem).shapeType === 'rect' && (
+                          <rect
+                            x={0}
+                            y={0}
+                            width={item.w}
+                            height={item.h}
+                            stroke={(item as ShapeItem).strokeColor}
+                            strokeWidth={(item as ShapeItem).strokeWidth}
+                            fill={(item as ShapeItem).fillColor || 'transparent'}
+                          />
+                        )}
+
+                        {(item as ShapeItem).shapeType === 'roundedRect' && (
+                          <rect
+                            x={0}
+                            y={0}
+                            rx={12}
+                            ry={12}
+                            width={item.w}
+                            height={item.h}
+                            stroke={(item as ShapeItem).strokeColor}
+                            strokeWidth={(item as ShapeItem).strokeWidth}
+                            fill={(item as ShapeItem).fillColor || 'transparent'}
+                          />
+                        )}
+
+                        {(item as ShapeItem).shapeType === 'ellipse' && (
+                          <ellipse
+                            cx={item.w / 2}
+                            cy={item.h / 2}
+                            rx={item.w / 2 - 2}
+                            ry={item.h / 2 - 2}
+                            stroke={(item as ShapeItem).strokeColor}
+                            strokeWidth={(item as ShapeItem).strokeWidth}
+                            fill={(item as ShapeItem).fillColor || 'transparent'}
+                          />
+                        )}
+
+                        {(item as ShapeItem).shapeType === 'triangle' && (
+                          <polygon
+                            points={`${item.w / 2},2 2,${item.h - 2} ${item.w - 2},${item.h - 2}`}
+                            stroke={(item as ShapeItem).strokeColor}
+                            strokeWidth={(item as ShapeItem).strokeWidth}
+                            fill={(item as ShapeItem).fillColor || 'transparent'}
+                          />
+                        )}
+
+                        {(item as ShapeItem).shapeType === 'diamond' && (
+                          <polygon
+                            points={`${item.w / 2},2 ${item.w - 2},${item.h / 2} ${item.w / 2},${item.h - 2} 2,${item.h / 2}`}
+                            stroke={(item as ShapeItem).strokeColor}
+                            strokeWidth={(item as ShapeItem).strokeWidth}
+                            fill={(item as ShapeItem).fillColor || 'transparent'}
+                          />
+                        )}
+
+                        {(item as ShapeItem).shapeType === 'star' && (
+                          <polygon
+                            points={getStarPoints(item.w, item.h, 5, 0.45)}
+                            stroke={(item as ShapeItem).strokeColor}
+                            strokeWidth={(item as ShapeItem).strokeWidth}
+                            fill={(item as ShapeItem).fillColor || 'transparent'}
+                          />
+                        )}
+
+                        {(item as ShapeItem).shapeType === 'grid' && (
+                          <g>
+                            <line
+                              x1={0}
+                              y1={item.h / 2}
+                              x2={item.w}
+                              y2={item.h / 2}
+                              stroke={(item as ShapeItem).strokeColor}
+                              strokeWidth={2}
+                              markerEnd="url(#arrowhead)"
+                            />
+                            <line
+                              x1={item.w / 2}
+                              y1={item.h}
+                              x2={item.w / 2}
+                              y2={0}
+                              stroke={(item as ShapeItem).strokeColor}
+                              strokeWidth={2}
+                              markerEnd="url(#arrowhead)"
+                            />
+                            {/* Grid lines */}
+                            {Array.from({ length: 5 }).map((_, idx) => (
+                              <React.Fragment key={idx}>
+                                <line
+                                  x1={(item.w / 6) * (idx + 1)}
+                                  y1={item.h / 2 - 4}
+                                  x2={(item.w / 6) * (idx + 1)}
+                                  y2={item.h / 2 + 4}
+                                  stroke={(item as ShapeItem).strokeColor}
+                                  strokeWidth={1}
+                                />
+                                <line
+                                  x1={item.w / 2 - 4}
+                                  y1={(item.h / 6) * (idx + 1)}
+                                  x2={item.w / 2 + 4}
+                                  y2={(item.h / 6) * (idx + 1)}
+                                  stroke={(item as ShapeItem).strokeColor}
+                                  strokeWidth={1}
+                                />
+                              </React.Fragment>
+                            ))}
+                          </g>
+                        )}
+                      </svg>
+                    </div>
+                  )}
+
+                  {item.kind === 'audio' && (
+                    <AudioPlayerWidget
+                      item={item as AudioItem}
+                      isSelected={isSelected}
+                      onDelete={() => deleteItem(item.id)}
+                    />
+                  )}
+
+                  {item.kind === 'math' && (
+                    <MathBox
+                      item={item as MathItem}
+                      isSelected={isSelected}
+                      onUpdateLatex={(latex) => {
+                        const updated = page.items.map((i) =>
+                          i.id === item.id ? { ...i, latex } : i
+                        );
+                        onUpdatePage({ ...page, items: updated });
+                      }}
+                      onDelete={() => deleteItem(item.id)}
+                    />
+                  )}
+
+                  {item.kind === 'image' && (
+                    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+                      <div
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          backgroundColor: '#f8fafc',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: 4,
+                          padding: 12,
+                        }}
+                      >
+                        <ImageIcon size={36} color="#94a3b8" />
+                        <span style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>
+                          {(item as ImageItem).alt || 'Image Attachment'}
+                        </span>
+                        {(item as ImageItem).ocr && (
+                          <div
+                            style={{
+                              marginTop: 8,
+                              padding: '4px 8px',
+                              backgroundColor: '#eff6ff',
+                              border: '1px solid #bfdbfe',
+                              borderRadius: 4,
+                              fontSize: 11,
+                              color: '#1d4ed8',
+                            }}
+                          >
+                            OCR: {(item as ImageItem).ocr}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {item.kind === 'file' && (
                     <div
                       style={{
-                        width: '100%',
-                        height: '100%',
-                        backgroundColor: '#f8fafc',
                         display: 'flex',
-                        flexDirection: 'column',
                         alignItems: 'center',
-                        justifyContent: 'center',
-                        border: '1px solid #e2e8f0',
-                        borderRadius: 4,
-                        padding: 12,
+                        justifyContent: 'space-between',
+                        padding: '10px 14px',
+                        backgroundColor: '#f8fafc',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: 6,
                       }}
                     >
-                      <ImageIcon size={36} color="#94a3b8" />
-                      <span style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>
-                        {(item as ImageItem).alt || 'Image Attachment'}
-                      </span>
-                      {(item as ImageItem).ocr && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <FileBox size={24} color="#3b82f6" />
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>
+                            {(item as FileItem).filename}
+                          </div>
+                          <div style={{ fontSize: 11, color: '#64748b' }}>
+                            {(item as FileItem).mime} •{' '}
+                            {(item as FileItem).size ? `${Math.round((item as FileItem).size! / 1024)} KB` : 'Attached'}
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        style={{
+                          border: 'none',
+                          background: '#3b82f6',
+                          color: '#ffffff',
+                          padding: '6px 12px',
+                          borderRadius: 4,
+                          cursor: 'pointer',
+                          fontSize: 12,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4,
+                        }}
+                      >
+                        <Download size={13} />
+                        Download
+                      </button>
+                    </div>
+                  )}
+
+                  {item.kind === 'table' && (
+                    <div style={{ width: '100%' }}>
+                      <table
+                        style={{
+                          width: '100%',
+                          borderCollapse: 'collapse',
+                          fontSize: 13,
+                        }}
+                      >
+                        <tbody>
+                          {Array.from({ length: (item as TableItem).rows || 2 }).map((_, r) => (
+                            <tr key={r}>
+                              {Array.from({ length: (item as TableItem).cols || 2 }).map((_, c) => {
+                                const cell = (item as TableItem).cells?.find(
+                                  (cell) => cell.row === r && cell.col === c
+                                );
+                                return (
+                                  <td
+                                    key={c}
+                                    style={{
+                                      border: '1px solid #cbd5e1',
+                                      padding: '6px 8px',
+                                      backgroundColor: cell?.shading || (r === 0 ? '#f8fafc' : '#ffffff'),
+                                      fontWeight: r === 0 ? 600 : 400,
+                                      minWidth: 80,
+                                    }}
+                                  >
+                                    <input
+                                      value={cell?.text || ''}
+                                      onChange={(e) =>
+                                        handleTableCellUpdate(item.id, r, c, e.target.value)
+                                      }
+                                      placeholder={`R${r}C${c}`}
+                                      style={{
+                                        width: '100%',
+                                        border: 'none',
+                                        outline: 'none',
+                                        background: 'transparent',
+                                        fontSize: 13,
+                                      }}
+                                    />
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+
+                      {/* Contextual Table Tools Buttons */}
+                      {isSelected && (
                         <div
                           style={{
-                            marginTop: 8,
-                            padding: '4px 8px',
-                            backgroundColor: '#eff6ff',
-                            border: '1px solid #bfdbfe',
-                            borderRadius: 4,
-                            fontSize: 11,
-                            color: '#1d4ed8',
+                            display: 'flex',
+                            gap: 8,
+                            marginTop: 6,
+                            paddingTop: 6,
+                            borderTop: '1px dashed #e2e8f0',
                           }}
                         >
-                          OCR: {(item as ImageItem).ocr}
+                          <button
+                            onClick={() => handleTableAddRow(item.id)}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              fontSize: 11,
+                              padding: '2px 6px',
+                              backgroundColor: '#f1f5f9',
+                              border: '1px solid #cbd5e1',
+                              borderRadius: 4,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <Rows size={12} /> Add Row
+                          </button>
+                          <button
+                            onClick={() => handleTableAddCol(item.id)}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              fontSize: 11,
+                              padding: '2px 6px',
+                              backgroundColor: '#f1f5f9',
+                              border: '1px solid #cbd5e1',
+                              borderRadius: 4,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <Columns size={12} /> Add Col
+                          </button>
                         </div>
                       )}
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
 
-                {item.kind === 'file' && (
+                {/* OneNote Container Anatomy: Right Sizing Handle Strip */}
+                {isSelected && (
                   <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '10px 14px',
-                      backgroundColor: '#f8fafc',
-                      border: '1px solid #cbd5e1',
-                      borderRadius: 6,
+                    onPointerDown={(e) => {
+                      e.stopPropagation();
+                      resizingItemRef.current = {
+                        id: item.id,
+                        startX: e.clientX,
+                        startY: e.clientY,
+                        initW: item.w,
+                        initH: item.h,
+                        mode: 'horizontal',
+                      };
                     }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <FileBox size={24} color="#3b82f6" />
-                      <div>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>
-                          {(item as FileItem).filename}
-                        </div>
-                        <div style={{ fontSize: 11, color: '#64748b' }}>
-                          {(item as FileItem).mime} •{' '}
-                          {((item as FileItem).size ? `${Math.round((item as FileItem).size! / 1024)} KB` : 'Attached')}
-                        </div>
-                      </div>
-                    </div>
-                    <button
-                      style={{
-                        border: 'none',
-                        background: '#3b82f6',
-                        color: '#ffffff',
-                        padding: '6px 12px',
-                        borderRadius: 4,
-                        cursor: 'pointer',
-                        fontSize: 12,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 4,
-                      }}
-                    >
-                      <Download size={13} />
-                      Download
-                    </button>
-                  </div>
+                    style={{
+                      position: 'absolute',
+                      right: 0,
+                      top: 14,
+                      bottom: 0,
+                      width: 6,
+                      cursor: 'ew-resize',
+                      backgroundColor: 'transparent',
+                    }}
+                    title="Drag to resize container width"
+                  />
                 )}
 
-                {item.kind === 'table' && (
-                  <table
-                    style={{
-                      width: '100%',
-                      borderCollapse: 'collapse',
-                      fontSize: 13,
+                {/* Bottom-Right Corner Resize Handle */}
+                {isSelected && (
+                  <div
+                    onPointerDown={(e) => {
+                      e.stopPropagation();
+                      resizingItemRef.current = {
+                        id: item.id,
+                        startX: e.clientX,
+                        startY: e.clientY,
+                        initW: item.w,
+                        initH: item.h,
+                        mode: 'both',
+                      };
                     }}
-                  >
-                    <tbody>
-                      {Array.from({ length: (item as TableItem).rows || 2 }).map((_, r) => (
-                        <tr key={r}>
-                          {Array.from({ length: (item as TableItem).cols || 2 }).map((_, c) => {
-                            const cell = (item as TableItem).cells?.find(
-                              (cell) => cell.row === r && cell.col === c
-                            );
-                            return (
-                              <td
-                                key={c}
-                                style={{
-                                  border: '1px solid #cbd5e1',
-                                  padding: '6px 10px',
-                                  backgroundColor: r === 0 ? '#f8fafc' : '#ffffff',
-                                  fontWeight: r === 0 ? 600 : 400,
-                                }}
-                              >
-                                {cell?.text || `Cell R${r}C${c}`}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                    style={{
+                      position: 'absolute',
+                      right: -4,
+                      bottom: -4,
+                      width: 10,
+                      height: 10,
+                      backgroundColor: '#3b82f6',
+                      borderRadius: 2,
+                      cursor: 'se-resize',
+                    }}
+                  />
                 )}
               </div>
-
-              {/* Resize Handle */}
-              {isSelected && (
-                <div
-                  onPointerDown={(e) => {
-                    e.stopPropagation();
-                    resizingItemRef.current = {
-                      id: item.id,
-                      startX: e.clientX,
-                      startY: e.clientY,
-                      initW: item.w,
-                      initH: item.h,
-                    };
-                  }}
-                  style={{
-                    position: 'absolute',
-                    right: -4,
-                    bottom: -4,
-                    width: 10,
-                    height: 10,
-                    backgroundColor: '#3b82f6',
-                    borderRadius: 2,
-                    cursor: 'se-resize',
-                  }}
-                />
-              )}
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
 
-      {/* Canvas Viewport Zoom Overlay */}
+      {/* On-screen Virtual Ruler */}
+      <VirtualRuler visible={rulerVisible} onClose={onToggleRuler || (() => {})} />
+
+      {/* Canvas Viewport Zoom & Reset Overlay */}
       <div
         style={{
           position: 'absolute',
