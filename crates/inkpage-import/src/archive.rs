@@ -46,8 +46,9 @@ pub fn extract_zip(archive_path: &Path, dest_dir: &Path) -> Result<PathBuf, Arch
                     fs::create_dir_all(parent)?;
                 }
             }
-            let mut outfile = File::create(&out_path)?;
-            io::copy(&mut file, &mut outfile)?;
+            let outfile = File::create(&out_path)?;
+            let mut writer = io::BufWriter::new(outfile);
+            io::copy(&mut file, &mut writer)?;
         }
     }
 
@@ -78,8 +79,9 @@ pub fn extract_cab(cab_path: &Path, dest_dir: &Path) -> Result<PathBuf, ArchiveE
             .read_file(&filename)
             .map_err(|e| ArchiveError::Cab(e.to_string()))?;
 
-        let mut outfile = File::create(&out_path)?;
-        io::copy(&mut reader, &mut outfile)?;
+        let outfile = File::create(&out_path)?;
+        let mut writer = io::BufWriter::new(outfile);
+        io::copy(&mut reader, &mut writer)?;
     }
 
     Ok(canonical_dest)

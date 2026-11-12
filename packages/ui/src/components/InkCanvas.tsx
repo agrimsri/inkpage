@@ -30,7 +30,33 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
 
   const isDrawingRef = useRef<boolean>(false);
   const activeStrokeRef = useRef<Stroke | null>(null);
+  const activeDirtyRectRef = useRef<{ minX: number; minY: number; maxX: number; maxY: number } | null>(null);
   const lastPenTimeRef = useRef<number>(0);
+  const strokeBBoxesRef = useRef<Map<string, [number, number, number, number]>>(new Map());
+
+  const getStrokeBBox = (stroke: Stroke): [number, number, number, number] => {
+    let bbox = strokeBBoxesRef.current.get(stroke.id);
+    if (!bbox) {
+      if (!stroke.pts || stroke.pts.length === 0) {
+        bbox = [0, 0, 0, 0];
+      } else {
+        let minX = stroke.pts[0][0],
+          minY = stroke.pts[0][1],
+          maxX = stroke.pts[0][0],
+          maxY = stroke.pts[0][1];
+        for (let i = 1; i < stroke.pts.length; i++) {
+          const pt = stroke.pts[i];
+          if (pt[0] < minX) minX = pt[0];
+          if (pt[0] > maxX) maxX = pt[0];
+          if (pt[1] < minY) minY = pt[1];
+          if (pt[1] > maxY) maxY = pt[1];
+        }
+        bbox = [minX, minY, maxX, maxY];
+      }
+      strokeBBoxesRef.current.set(stroke.id, bbox);
+    }
+    return bbox;
+  };
 
   const canvasWidth = Math.max(inkGroup.w || 3200, 3200);
   const canvasHeight = Math.max(inkGroup.h || 2400, 2400);
@@ -50,8 +76,16 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
   }, [inkGroup.strokes]);
 
   useEffect(() => {
+    if (strokeBBoxesRef.current.size > 1000) {
+      const activeIds = new Set(inkGroup.strokes.map((s) => s.id));
+      for (const key of Array.from(strokeBBoxesRef.current.keys())) {
+        if (!activeIds.has(key)) {
+          strokeBBoxesRef.current.delete(key);
+        }
+      }
+    }
     redrawCompletedStrokes();
-  }, [redrawCompletedStrokes]);
+  }, [redrawCompletedStrokes, inkGroup.strokes]);
 
   // Pointer Down: Start active stroke
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -91,6 +125,7 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
     };
 
     activeStrokeRef.current = newStroke;
+    activeDirtyRectRef.current = { minX: x, minY: y, maxX: x, maxY: y };
 
     // Draw initial point onto the active canvas
     const activeCanvas = activeCanvasRef.current;
@@ -138,12 +173,21 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
     const coalescedCount = rawEvents.length;
     const newPoints: StrokePoint[] = [];
 
+    const dirty = activeDirtyRectRef.current;
+
     for (let i = 0; i < rawEvents.length; i++) {
       const ev = rawEvents[i];
       const px = (ev.clientX - rect.left) / zoom;
       const py = (ev.clientY - rect.top) / zoom;
       const pressure = ev.pressure > 0 ? ev.pressure : 0.5;
       newPoints.push([px, py, pressure, ev.tiltX || 0, ev.timeStamp || now]);
+
+      if (dirty) {
+        if (px < dirty.minX) dirty.minX = px;
+        if (px > dirty.maxX) dirty.maxX = px;
+        if (py < dirty.minY) dirty.minY = py;
+        if (py > dirty.maxY) dirty.maxY = py;
+      }
     }
 
     activeStrokeRef.current.pts.push(...newPoints);
@@ -153,7 +197,17 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
     if (activeCanvas) {
       const actCtx = activeCanvas.getContext('2d');
       if (actCtx) {
-        actCtx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
+        // High-performance dirty rect clearing: clear only the active stroke bounding box with padding
+        if (dirty) {
+          const margin = Math.max(activeStrokeRef.current.width * 2, 40);
+          const cx = Math.max(0, Math.floor(dirty.minX - margin));
+          const cy = Math.max(0, Math.floor(dirty.minY - margin));
+          const cw = Math.min(activeCanvas.width - cx, Math.ceil(dirty.maxX - dirty.minX + margin * 2));
+          const ch = Math.min(activeCanvas.height - cy, Math.ceil(dirty.maxY - dirty.minY + margin * 2));
+          actCtx.clearRect(cx, cy, cw, ch);
+        } else {
+          actCtx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
+        }
         renderStrokeToCanvas(actCtx, activeStrokeRef.current);
       }
     }
@@ -175,6 +229,7 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
 
     const finishedStroke = activeStrokeRef.current;
     activeStrokeRef.current = null;
+    activeDirtyRectRef.current = null;
 
     // Clear active stroke canvas layer
     const activeCanvas = activeCanvasRef.current;
@@ -191,10 +246,23 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
     }
   };
 
-  // Stroke Eraser with 18px radius collision
+  // Optimized Stroke Eraser with AABB pre-filtering and 18px radius collision
   const eraseStrokeAt = (x: number, y: number) => {
-    const thresholdSq = 18 * 18;
+    const threshold = 18;
+    const thresholdSq = threshold * threshold;
     const remaining = inkGroup.strokes.filter((stroke) => {
+      if (!stroke.pts || stroke.pts.length === 0) return false;
+      const bbox = getStrokeBBox(stroke);
+      // Fast AABB rejection: if eraser point is outside stroke bbox + threshold, skip point checks
+      if (
+        x < bbox[0] - threshold ||
+        x > bbox[2] + threshold ||
+        y < bbox[1] - threshold ||
+        y > bbox[3] + threshold
+      ) {
+        return true;
+      }
+
       return !stroke.pts.some((pt) => {
         const dx = pt[0] - x;
         const dy = pt[1] - y;

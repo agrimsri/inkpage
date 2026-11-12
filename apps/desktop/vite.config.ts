@@ -10,5 +10,18 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
+    target: 'es2022',
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom'],
+          'lucide-icons': ['lucide-react'],
+        },
+      },
+    },
+  },
+  esbuild: {
+    legalComments: 'none',
   },
 });

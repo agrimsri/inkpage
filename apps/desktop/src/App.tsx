@@ -94,6 +94,39 @@ export const App: React.FC = () => {
   const historyRef = useRef<Page[]>([]);
   const historyIdxRef = useRef<number>(-1);
   const lastSnapshotTimeRef = useRef<number>(0);
+  const lastUndoPushTimeRef = useRef<number>(0);
+  const pendingSaveRef = useRef<{ nbId: string; secId: string; page: Page } | null>(null);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const flushPendingSave = useCallback(() => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
+    const pending = pendingSaveRef.current;
+    if (!pending) return;
+    pendingSaveRef.current = null;
+
+    fetch(
+      `${API_BASE_URL}/api/notebooks/${pending.nbId}/sections/${pending.secId}/pages/${pending.page.id}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(pending.page),
+      }
+    ).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      flushPendingSave();
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      flushPendingSave();
+    };
+  }, [flushPendingSave]);
 
   // Hidden file inputs for attachments & images
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -232,6 +265,7 @@ export const App: React.FC = () => {
   };
 
   const selectNotebook = async (nb: Notebook) => {
+    flushPendingSave();
     setActiveNotebook(nb);
     try {
       const res = await fetch(`${API_BASE_URL}/api/notebooks/${nb.id}/sections`);
@@ -249,6 +283,7 @@ export const App: React.FC = () => {
   };
 
   const selectSection = async (nbId: string, sec: Section) => {
+    flushPendingSave();
     setActiveSection(sec);
     try {
       const res = await fetch(`${API_BASE_URL}/api/notebooks/${nbId}/sections/${sec.id}/pages`);
@@ -265,10 +300,12 @@ export const App: React.FC = () => {
   };
 
   const selectPage = (p: Page) => {
+    flushPendingSave();
     setActivePage(p);
     setSelectedItemId(null);
     historyRef.current = [p];
     historyIdxRef.current = 0;
+    lastUndoPushTimeRef.current = 0;
   };
 
   const handleUpdatePage = useCallback(
@@ -299,26 +336,41 @@ export const App: React.FC = () => {
       setActivePage(pageWithHistory);
       setPages((prev) => prev.map((p) => (p.id === pageWithHistory.id ? pageWithHistory : p)));
 
-      // Add to undo history (capped to avoid memory bloat)
-      const newUndo = historyRef.current.slice(0, historyIdxRef.current + 1);
-      newUndo.push(pageWithHistory);
-      if (newUndo.length > 50) newUndo.shift();
-      historyRef.current = newUndo;
-      historyIdxRef.current = newUndo.length - 1;
+      // Throttled undo history:
+      // CRITICAL: Never overwrite the base snapshot (historyIdxRef.current === 0).
+      // Only coalesce rapid successive keystrokes/drags if historyIdxRef.current > 0!
+      const nowMs = Date.now();
+      const isRapidEdit =
+        nowMs - lastUndoPushTimeRef.current < 400 && historyIdxRef.current > 0;
 
-      // Save to backend
+      if (isRapidEdit) {
+        historyRef.current[historyIdxRef.current] = pageWithHistory;
+      } else {
+        const newUndo = historyRef.current.slice(0, historyIdxRef.current + 1);
+        newUndo.push(pageWithHistory);
+        if (newUndo.length > 50) newUndo.shift();
+        historyRef.current = newUndo;
+        historyIdxRef.current = newUndo.length - 1;
+      }
+      lastUndoPushTimeRef.current = nowMs;
+
+      // Debounce saving to backend to prevent network saturation and fsync storms
       if (activeNotebook && activeSection) {
-        fetch(
-          `${API_BASE_URL}/api/notebooks/${activeNotebook.id}/sections/${activeSection.id}/pages/${pageWithHistory.id}`,
-          {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(pageWithHistory),
-          }
-        ).catch(() => {});
+        pendingSaveRef.current = {
+          nbId: activeNotebook.id,
+          secId: activeSection.id,
+          page: pageWithHistory,
+        };
+        if (saveTimeoutRef.current) {
+          clearTimeout(saveTimeoutRef.current);
+        }
+        saveTimeoutRef.current = setTimeout(() => {
+          saveTimeoutRef.current = null;
+          flushPendingSave();
+        }, 400);
       }
     },
-    [activeNotebook, activeSection]
+    [activeNotebook, activeSection, flushPendingSave]
   );
 
   const handleCreateNotebook = async (title: string) => {
@@ -404,6 +456,13 @@ export const App: React.FC = () => {
 
   const handleDeletePage = async (pageId: string) => {
     if (!activeNotebook || !activeSection) return;
+    if (pendingSaveRef.current?.page.id === pageId) {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
+      }
+      pendingSaveRef.current = null;
+    }
     try {
       await fetch(
         `${API_BASE_URL}/api/notebooks/${activeNotebook.id}/sections/${activeSection.id}/pages/${pageId}`,
@@ -448,17 +507,51 @@ export const App: React.FC = () => {
 
   const handleUndo = () => {
     if (historyIdxRef.current > 0) {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
+      }
       historyIdxRef.current -= 1;
       const prev = historyRef.current[historyIdxRef.current];
+      lastUndoPushTimeRef.current = 0;
       setActivePage(prev);
+      setPages((pList) => pList.map((p) => (p.id === prev.id ? prev : p)));
+      if (activeNotebook && activeSection) {
+        pendingSaveRef.current = {
+          nbId: activeNotebook.id,
+          secId: activeSection.id,
+          page: prev,
+        };
+        saveTimeoutRef.current = setTimeout(() => {
+          saveTimeoutRef.current = null;
+          flushPendingSave();
+        }, 400);
+      }
     }
   };
 
   const handleRedo = () => {
     if (historyIdxRef.current < historyRef.current.length - 1) {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
+      }
       historyIdxRef.current += 1;
       const next = historyRef.current[historyIdxRef.current];
+      lastUndoPushTimeRef.current = 0;
       setActivePage(next);
+      setPages((pList) => pList.map((p) => (p.id === next.id ? next : p)));
+      if (activeNotebook && activeSection) {
+        pendingSaveRef.current = {
+          nbId: activeNotebook.id,
+          secId: activeSection.id,
+          page: next,
+        };
+        saveTimeoutRef.current = setTimeout(() => {
+          saveTimeoutRef.current = null;
+          flushPendingSave();
+        }, 400);
+      }
     }
   };
 

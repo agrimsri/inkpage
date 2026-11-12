@@ -36,7 +36,7 @@ export interface SidebarProps {
   onOpenExport: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({
+export const Sidebar: React.FC<SidebarProps> = React.memo(({
   notebooks,
   activeNotebook,
   sections,
@@ -481,7 +481,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       )}
     </div>
   );
-};
+});
 
 const railIconStyle: React.CSSProperties = {
   width: 36,

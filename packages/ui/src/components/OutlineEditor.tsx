@@ -56,7 +56,7 @@ export const OutlineEditor: React.FC<OutlineEditorProps> = ({
           }
         }
         parsed.push({
-          id: `item_${i}_${Date.now()}`,
+          id: (node.attrs?.id as string) || `outline_node_${container.id}_${i}`,
           indent,
           tags,
           text,
@@ -66,7 +66,7 @@ export const OutlineEditor: React.FC<OutlineEditorProps> = ({
 
     if (parsed.length === 0) {
       parsed.push({
-        id: `item_0_${Date.now()}`,
+        id: `outline_node_${container.id}_0`,
         indent: 0,
         tags: [],
         text: '',
@@ -74,7 +74,7 @@ export const OutlineEditor: React.FC<OutlineEditorProps> = ({
     }
 
     setItems(parsed);
-  }, [container.doc]);
+  }, [container.doc, container.id]);
 
   // Synchronize back to PMDocNode
   const syncToDoc = (newItems: OutlineItemData[]) => {
@@ -82,6 +82,7 @@ export const OutlineEditor: React.FC<OutlineEditorProps> = ({
     const content: PMDocNode[] = newItems.map((item) => ({
       type: 'outlineItem',
       attrs: {
+        id: item.id,
         indent: item.indent,
         tags: item.tags,
       },
@@ -107,7 +108,7 @@ export const OutlineEditor: React.FC<OutlineEditorProps> = ({
       const current = items[index];
       const newItems = [...items];
       const newItem: OutlineItemData = {
-        id: `item_${Date.now()}_${Math.random()}`,
+        id: `outline_node_${container.id}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         indent: current.indent,
         tags: current.tags.map((t) => (t.type === 'todo' ? { type: 'todo', done: false } : t)),
         text: '',

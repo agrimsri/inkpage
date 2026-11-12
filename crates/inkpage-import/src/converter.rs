@@ -210,17 +210,21 @@ fn write_pm_doc_markdown(out: &mut impl Write, node: &PMNode) -> std::io::Result
 }
 
 pub fn render_strokes_to_svg(strokes: &[Stroke]) -> String {
-    let mut svg = String::from(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 800">"#);
+    use std::fmt::Write;
+    let est_cap = strokes.iter().map(|s| 120 + s.pts.len() * 24).sum::<usize>() + 100;
+    let mut svg = String::with_capacity(est_cap);
+    svg.push_str(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 800">"#);
     for s in strokes {
         if s.pts.is_empty() {
             continue;
         }
-        svg.push_str(&format!(
+        let _ = write!(
+            svg,
             r#"<path stroke="{}" stroke-width="{}" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M {} {}"#,
             s.color, s.width, s.pts[0].x, s.pts[0].y
-        ));
+        );
         for pt in &s.pts[1..] {
-            svg.push_str(&format!(" L {} {}", pt.x, pt.y));
+            let _ = write!(svg, " L {} {}", pt.x, pt.y);
         }
         svg.push_str(r#"" />"#);
     }

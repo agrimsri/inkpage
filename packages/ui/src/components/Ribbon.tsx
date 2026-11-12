@@ -205,7 +205,7 @@ const PEN_COLORS = ['#0f172a', '#2563eb', '#dc2626', '#16a34a', '#9333ea', '#ea5
 const HIGHLIGHT_COLORS = ['#fef08a', '#bbf7d0', '#bae6fd', '#fbcfe8', '#fed7aa'];
 const PEN_WIDTHS = [2, 4, 8, 14];
 
-export const Ribbon: React.FC<RibbonProps> = (props) => {
+export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
   const [showTablePicker, setShowTablePicker] = useState(false);
   const [hoverGrid, setHoverGrid] = useState<{ r: number; c: number }>({ r: 3, c: 3 });
   const [showTagsMenu, setShowTagsMenu] = useState(false);
@@ -1098,7 +1098,7 @@ export const Ribbon: React.FC<RibbonProps> = (props) => {
       </div>
     </div>
   );
-};
+});
 
 const RibbonGroup: React.FC<{ title: string; children: React.ReactNode }> = ({
   title,

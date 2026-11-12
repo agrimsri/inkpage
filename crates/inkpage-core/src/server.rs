@@ -234,7 +234,10 @@ async fn delete_page(
     state
         .storage
         .delete_page(&nb_id, &sec_id, &page_id)
-        .map(|_| Json(serde_json::json!({ "status": "deleted" })))
+        .map(|_| {
+            let _ = state.index.delete_page(&page_id);
+            Json(serde_json::json!({ "status": "deleted" }))
+        })
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
@@ -274,12 +277,20 @@ async fn get_asset(
     State(state): State<Arc<AppState>>,
     AxumPath((nb_id, sec_id, sha256)): AxumPath<(String, String, String)>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let bytes = state
+    let (bytes, mime) = state
         .storage
-        .get_asset(&nb_id, &sec_id, &sha256)
+        .get_asset_with_mime(&nb_id, &sec_id, &sha256)
         .map_err(|_| StatusCode::NOT_FOUND)?;
 
-    Ok(bytes)
+    let headers = [
+        (axum::http::header::CONTENT_TYPE, mime),
+        (
+            axum::http::header::CACHE_CONTROL,
+            "public, max-age=31536000, immutable".to_string(),
+        ),
+    ];
+
+    Ok((headers, bytes))
 }
 
 async fn search_index(

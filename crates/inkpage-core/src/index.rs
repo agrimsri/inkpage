@@ -67,6 +67,11 @@ impl SearchIndex {
 
         conn.execute_batch(
             "
+            PRAGMA journal_mode = WAL;
+            PRAGMA synchronous = NORMAL;
+            PRAGMA cache_size = -64000;
+            PRAGMA temp_store = MEMORY;
+
             CREATE TABLE IF NOT EXISTS page_items (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 notebook_id TEXT NOT NULL,
@@ -79,6 +84,9 @@ impl SearchIndex {
                 tags TEXT,
                 ocr_text TEXT
             );
+
+            CREATE INDEX IF NOT EXISTS idx_page_items_page_id ON page_items(page_id);
+            CREATE INDEX IF NOT EXISTS idx_page_items_nb_sec ON page_items(notebook_id, section_id);
 
             CREATE VIRTUAL TABLE IF NOT EXISTS page_fts USING fts5(
                 page_title,
@@ -120,6 +128,9 @@ impl SearchIndex {
                 done INTEGER NOT NULL DEFAULT 0,
                 text TEXT NOT NULL
             );
+
+            CREATE INDEX IF NOT EXISTS idx_note_tags_page_id ON note_tags(page_id);
+            CREATE INDEX IF NOT EXISTS idx_note_tags_nb_summary ON note_tags(notebook_id, tag_type, done, page_title);
             ",
         )?;
 
@@ -134,7 +145,7 @@ impl SearchIndex {
         section_color: &str,
         page_json: &serde_json::Value,
     ) -> Result<(), IndexError> {
-        let conn = self.conn.lock().unwrap();
+        let mut conn = self.conn.lock().unwrap();
 
         let page_id = page_json
             .get("id")
@@ -145,17 +156,29 @@ impl SearchIndex {
             .and_then(|v| v.as_str())
             .unwrap_or("Untitled Page");
 
+        let tx = conn.transaction()?;
+
         // Clear existing entries for this page
-        conn.execute(
+        tx.execute(
             "DELETE FROM page_items WHERE page_id = ?1;",
             params![page_id],
         )?;
-        conn.execute(
+        tx.execute(
             "DELETE FROM note_tags WHERE page_id = ?1;",
             params![page_id],
         )?;
 
         if let Some(items) = page_json.get("items").and_then(|v| v.as_array()) {
+            let mut insert_item_stmt = tx.prepare_cached(
+                "INSERT INTO page_items (notebook_id, section_id, page_id, page_title, item_id, item_kind, content, tags, ocr_text)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9);",
+            )?;
+
+            let mut insert_tag_stmt = tx.prepare_cached(
+                "INSERT INTO note_tags (notebook_id, section_id, section_title, section_color, page_id, page_title, item_id, tag_type, done, text)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10);",
+            )?;
+
             for item in items {
                 let item_id = item
                     .get("id")
@@ -169,6 +192,7 @@ impl SearchIndex {
                 let mut content = String::new();
                 let mut tags_str = String::new();
                 let mut ocr_text = String::new();
+                let mut collected_tags = Vec::new();
 
                 match kind {
                     "container" => {
@@ -177,24 +201,7 @@ impl SearchIndex {
                                 doc,
                                 &mut content,
                                 &mut tags_str,
-                                &mut |tag_type, done, text| {
-                                    let _ = conn.execute(
-                                        "INSERT INTO note_tags (notebook_id, section_id, section_title, section_color, page_id, page_title, item_id, tag_type, done, text)
-                                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10);",
-                                        params![
-                                            notebook_id,
-                                            section_id,
-                                            section_title,
-                                            section_color,
-                                            page_id,
-                                            page_title,
-                                            item_id,
-                                            tag_type,
-                                            if done { 1 } else { 0 },
-                                            text
-                                        ],
-                                    );
-                                },
+                                &mut collected_tags,
                             );
                         }
                     }
@@ -229,24 +236,49 @@ impl SearchIndex {
                     _ => {}
                 }
 
-                conn.execute(
-                    "INSERT INTO page_items (notebook_id, section_id, page_id, page_title, item_id, item_kind, content, tags, ocr_text)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9);",
-                    params![
+                for (tag_type, done, text) in collected_tags {
+                    insert_tag_stmt.execute(params![
                         notebook_id,
                         section_id,
+                        section_title,
+                        section_color,
                         page_id,
                         page_title,
                         item_id,
-                        kind,
-                        content,
-                        tags_str,
-                        ocr_text
-                    ],
-                )?;
+                        tag_type,
+                        if done { 1 } else { 0 },
+                        text
+                    ])?;
+                }
+
+                insert_item_stmt.execute(params![
+                    notebook_id,
+                    section_id,
+                    page_id,
+                    page_title,
+                    item_id,
+                    kind,
+                    content,
+                    tags_str,
+                    ocr_text
+                ])?;
             }
         }
 
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn delete_page(&self, page_id: &str) -> Result<(), IndexError> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "DELETE FROM page_items WHERE page_id = ?1;",
+            params![page_id],
+        )?;
+        conn.execute(
+            "DELETE FROM note_tags WHERE page_id = ?1;",
+            params![page_id],
+        )?;
         Ok(())
     }
 
@@ -325,7 +357,7 @@ fn extract_doc_text_and_tags(
     node: &serde_json::Value,
     content: &mut String,
     tags_str: &mut String,
-    tag_cb: &mut dyn FnMut(&str, bool, &str),
+    collected_tags: &mut Vec<(String, bool, String)>,
 ) {
     if let Some(text) = node.get("text").and_then(|v| v.as_str()) {
         content.push_str(text);
@@ -352,7 +384,7 @@ fn extract_doc_text_and_tags(
                             }
                         }
                     }
-                    tag_cb(ttype, done, &item_text);
+                    collected_tags.push((ttype.to_string(), done, item_text));
                 }
             }
         }
@@ -360,7 +392,7 @@ fn extract_doc_text_and_tags(
 
     if let Some(children) = node.get("content").and_then(|v| v.as_array()) {
         for child in children {
-            extract_doc_text_and_tags(child, content, tags_str, tag_cb);
+            extract_doc_text_and_tags(child, content, tags_str, collected_tags);
         }
     }
 }
@@ -421,5 +453,12 @@ mod tests {
         assert_eq!(tags[0].tag_type, "todo");
         assert_eq!(tags[0].done, false);
         assert_eq!(tags[0].text, "Implement SQLite FTS5 search index");
+
+        // 4. Delete page and verify index cleanup
+        index.delete_page("page-01").unwrap();
+        let empty_search = index.search("SQLite").unwrap();
+        assert!(empty_search.is_empty());
+        let empty_tags = index.get_tags_summary("nb-01").unwrap();
+        assert!(empty_tags.is_empty());
     }
 }

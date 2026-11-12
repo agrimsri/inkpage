@@ -52,7 +52,7 @@ function getStarPoints(w: number, h: number, points = 5, innerRatio = 0.5): stri
   const cy = h / 2;
   const rx = w / 2;
   const ry = h / 2;
-  const pts: string[] = [];
+  let pts = '';
   const step = Math.PI / points;
   let angle = -Math.PI / 2;
   for (let i = 0; i < 2 * points; i++) {
@@ -60,13 +60,13 @@ function getStarPoints(w: number, h: number, points = 5, innerRatio = 0.5): stri
     const rCurrentY = i % 2 === 0 ? ry : ry * innerRatio;
     const x = cx + rCurrentX * Math.cos(angle);
     const y = cy + rCurrentY * Math.sin(angle);
-    pts.push(`${x},${y}`);
+    pts += (i === 0 ? '' : ' ') + `${x.toFixed(1)},${y.toFixed(1)}`;
     angle += step;
   }
-  return pts.join(' ');
+  return pts;
 }
 
-export const Canvas: React.FC<CanvasProps> = ({
+export const Canvas: React.FC<CanvasProps> = React.memo(({
   page,
   tool,
   activeColor,
@@ -617,7 +617,7 @@ export const Canvas: React.FC<CanvasProps> = ({
                       <svg width="100%" height={item.h} style={{ overflow: 'visible' }}>
                         <defs>
                           <marker
-                            id="arrowhead"
+                            id={`arrowhead-${item.id}`}
                             markerWidth="8"
                             markerHeight="6"
                             refX="7"
@@ -627,7 +627,7 @@ export const Canvas: React.FC<CanvasProps> = ({
                             <polygon points="0 0, 8 3, 0 6" fill={(item as ShapeItem).strokeColor} />
                           </marker>
                           <marker
-                            id="arrowhead-start"
+                            id={`arrowhead-start-${item.id}`}
                             markerWidth="8"
                             markerHeight="6"
                             refX="1"
@@ -657,7 +657,7 @@ export const Canvas: React.FC<CanvasProps> = ({
                             y2={item.h}
                             stroke={(item as ShapeItem).strokeColor}
                             strokeWidth={(item as ShapeItem).strokeWidth}
-                            markerEnd="url(#arrowhead)"
+                            markerEnd={`url(#arrowhead-${item.id})`}
                           />
                         )}
 
@@ -669,8 +669,8 @@ export const Canvas: React.FC<CanvasProps> = ({
                             y2={item.h}
                             stroke={(item as ShapeItem).strokeColor}
                             strokeWidth={(item as ShapeItem).strokeWidth}
-                            markerStart="url(#arrowhead-start)"
-                            markerEnd="url(#arrowhead)"
+                            markerStart={`url(#arrowhead-start-${item.id})`}
+                            markerEnd={`url(#arrowhead-${item.id})`}
                           />
                         )}
 
@@ -1096,4 +1096,4 @@ export const Canvas: React.FC<CanvasProps> = ({
       </div>
     </div>
   );
-};
+});

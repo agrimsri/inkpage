@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::sync::RwLock;
 use thiserror::Error;
 use ulid::Ulid;
 
@@ -68,13 +70,17 @@ pub struct SectionMeta {
 
 pub struct StorageManager {
     base_dir: PathBuf,
+    notebook_cache: RwLock<HashMap<String, PathBuf>>,
 }
 
 impl StorageManager {
     pub fn new(base_dir: impl Into<PathBuf>) -> Self {
         let path = base_dir.into();
         let _ = fs::create_dir_all(&path);
-        Self { base_dir: path }
+        Self {
+            base_dir: path,
+            notebook_cache: RwLock::new(HashMap::new()),
+        }
     }
 
     pub fn base_dir(&self) -> &Path {
@@ -87,6 +93,8 @@ impl StorageManager {
             return Ok(notebooks);
         }
 
+        let mut cache_entries = Vec::new();
+
         for entry in fs::read_dir(&self.base_dir)? {
             let entry = entry?;
             let path = entry.path();
@@ -95,9 +103,16 @@ impl StorageManager {
                 if meta_file.exists() {
                     let content = fs::read_to_string(&meta_file)?;
                     if let Ok(meta) = serde_json::from_str::<NotebookMeta>(&content) {
+                        cache_entries.push((meta.id.clone(), path));
                         notebooks.push(meta);
                     }
                 }
+            }
+        }
+
+        if let Ok(mut cache) = self.notebook_cache.write() {
+            for (id, path) in cache_entries {
+                cache.insert(id, path);
             }
         }
 
@@ -106,26 +121,48 @@ impl StorageManager {
     }
 
     pub fn get_notebook_dir(&self, notebook_id: &str) -> Result<PathBuf, StorageError> {
-        for entry in fs::read_dir(&self.base_dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.is_dir() && path.extension().map_or(false, |e| e == "inkbook") {
-                let meta_file = path.join("notebook.json");
-                if meta_file.exists() {
-                    if let Ok(content) = fs::read_to_string(&meta_file) {
-                        if let Ok(meta) = serde_json::from_str::<NotebookMeta>(&content) {
-                            if meta.id == notebook_id {
-                                return Ok(path);
+        // Fast path: Check in-memory notebook path cache
+        if let Ok(cache) = self.notebook_cache.read() {
+            if let Some(path) = cache.get(notebook_id) {
+                if path.exists() {
+                    return Ok(path.clone());
+                }
+            }
+        }
+
+        // Slow path: Scan directory and populate cache
+        let mut matched_path = None;
+        let mut cache_entries = Vec::new();
+
+        if self.base_dir.exists() {
+            for entry in fs::read_dir(&self.base_dir)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.is_dir() && path.extension().map_or(false, |e| e == "inkbook") {
+                    let meta_file = path.join("notebook.json");
+                    if meta_file.exists() {
+                        if let Ok(content) = fs::read_to_string(&meta_file) {
+                            if let Ok(meta) = serde_json::from_str::<NotebookMeta>(&content) {
+                                if meta.id == notebook_id {
+                                    matched_path = Some(path.clone());
+                                }
+                                cache_entries.push((meta.id, path));
                             }
                         }
                     }
                 }
             }
         }
-        Err(StorageError::NotFound(format!(
-            "Notebook with ID {} not found",
-            notebook_id
-        )))
+
+        if let Ok(mut cache) = self.notebook_cache.write() {
+            for (id, path) in cache_entries {
+                cache.insert(id, path);
+            }
+        }
+
+        matched_path.ok_or_else(|| {
+            StorageError::NotFound(format!("Notebook with ID {} not found", notebook_id))
+        })
     }
 
     pub fn create_notebook(&self, title: &str) -> Result<NotebookMeta, StorageError> {
@@ -148,6 +185,11 @@ impl StorageManager {
 
         let json = serde_json::to_vec_pretty(&meta)?;
         write_atomic(&book_dir.join("notebook.json"), &json)?;
+
+        // Seed in-memory cache immediately
+        if let Ok(mut cache) = self.notebook_cache.write() {
+            cache.insert(id.clone(), book_dir.clone());
+        }
 
         // Create default section and page
         let _ = self.create_section(&id, "Quick Notes", "#6366f1");
@@ -417,18 +459,68 @@ impl StorageManager {
         section_id: &str,
         sha256: &str,
     ) -> Result<Vec<u8>, StorageError> {
+        self.get_asset_with_mime(notebook_id, section_id, sha256)
+            .map(|(data, _)| data)
+    }
+
+    pub fn get_asset_with_mime(
+        &self,
+        notebook_id: &str,
+        section_id: &str,
+        sha256: &str,
+    ) -> Result<(Vec<u8>, String), StorageError> {
         let book_dir = self.get_notebook_dir(notebook_id)?;
         let assets_dir = book_dir
             .join("sections")
             .join(format!("{}.section", section_id))
             .join("assets");
 
-        for entry in fs::read_dir(assets_dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                if stem == sha256 {
-                    return Ok(fs::read(path)?);
+        // Try direct extension probes first for common asset types before full directory read
+        for ext in &[
+            "png", "jpg", "jpeg", "gif", "webp", "svg", "bin", "pdf", "mp3", "wav", "webm",
+        ] {
+            let candidate = assets_dir.join(format!("{}.{}", sha256, ext));
+            if candidate.is_file() {
+                let mime = match *ext {
+                    "png" => "image/png",
+                    "jpg" | "jpeg" => "image/jpeg",
+                    "gif" => "image/gif",
+                    "webp" => "image/webp",
+                    "svg" => "image/svg+xml",
+                    "pdf" => "application/pdf",
+                    "mp3" => "audio/mpeg",
+                    "wav" => "audio/wav",
+                    "webm" => "audio/webm",
+                    _ => "application/octet-stream",
+                };
+                return Ok((fs::read(candidate)?, mime.to_string()));
+            }
+        }
+
+        if assets_dir.exists() {
+            for entry in fs::read_dir(assets_dir)? {
+                let entry = entry?;
+                let path = entry.path();
+                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                    if stem == sha256 {
+                        let mime = path
+                            .extension()
+                            .and_then(|e| e.to_str())
+                            .map(|ext| match ext {
+                                "png" => "image/png",
+                                "jpg" | "jpeg" => "image/jpeg",
+                                "gif" => "image/gif",
+                                "webp" => "image/webp",
+                                "svg" => "image/svg+xml",
+                                "pdf" => "application/pdf",
+                                "mp3" => "audio/mpeg",
+                                "wav" => "audio/wav",
+                                "webm" => "audio/webm",
+                                _ => "application/octet-stream",
+                            })
+                            .unwrap_or("application/octet-stream");
+                        return Ok((fs::read(path)?, mime.to_string()));
+                    }
                 }
             }
         }
@@ -492,5 +584,33 @@ mod tests {
         let pages = storage.list_pages(&nb.id, &sections[0].id).unwrap();
         assert_eq!(pages.len(), 1);
         assert_eq!(pages[0]["title"], "Untitled Page");
+    }
+
+    #[test]
+    fn test_caching_and_asset_probing() {
+        let dir = tempdir().unwrap();
+        let storage = StorageManager::new(dir.path());
+
+        let nb = storage.create_notebook("Assets Notebook").unwrap();
+        let sec = storage.create_section(&nb.id, "Drawings", "#10b981").unwrap();
+
+        // 1. Path cache test
+        let dir1 = storage.get_notebook_dir(&nb.id).unwrap();
+        let dir2 = storage.get_notebook_dir(&nb.id).unwrap();
+        assert_eq!(dir1, dir2);
+
+        // 2. Asset save and fast probe
+        let dummy_data = b"fake png image data for testing";
+        let sha = storage
+            .save_asset(&nb.id, &sec.id, "diagram.png", dummy_data)
+            .unwrap();
+        assert!(!sha.is_empty());
+
+        let loaded = storage.get_asset(&nb.id, &sec.id, &sha).unwrap();
+        assert_eq!(loaded, dummy_data);
+
+        let (loaded_mime_data, mime) = storage.get_asset_with_mime(&nb.id, &sec.id, &sha).unwrap();
+        assert_eq!(loaded_mime_data, dummy_data);
+        assert_eq!(mime, "image/png");
     }
 }

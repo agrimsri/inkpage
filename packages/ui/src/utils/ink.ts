@@ -13,9 +13,9 @@ export interface StrokeOptions {
  * Computes polygon outline points from a stroke's raw points using perfect-freehand
  */
 export function getSvgPathFromStroke(stroke: Stroke, options?: StrokeOptions): string {
-  const pts = stroke.pts.map((p) => [p[0], p[1], p[2] || 0.5]);
+  if (!stroke.pts || stroke.pts.length === 0) return '';
 
-  const outline = getStroke(pts, {
+  const outline = getStroke(stroke.pts as unknown as number[][], {
     size: stroke.width || options?.size || 4,
     thinning: stroke.tool === 'highlighter' ? 0 : options?.thinning ?? 0.5,
     smoothing: options?.smoothing ?? 0.5,
@@ -23,19 +23,14 @@ export function getSvgPathFromStroke(stroke: Stroke, options?: StrokeOptions): s
     simulatePressure: options?.simulatePressure ?? false,
   });
 
-  if (outline.length === 0) return '';
+  const len = outline.length;
+  if (len === 0) return '';
 
-  const d: string[] = [];
-  const [first, ...rest] = outline;
-  d.push(`M ${first[0].toFixed(2)} ${first[1].toFixed(2)}`);
-
-  for (let i = 0; i < rest.length; i++) {
-    const pt = rest[i];
-    d.push(`L ${pt[0].toFixed(2)} ${pt[1].toFixed(2)}`);
+  let d = `M ${outline[0][0].toFixed(2)} ${outline[0][1].toFixed(2)}`;
+  for (let i = 1; i < len; i++) {
+    d += ` L ${outline[i][0].toFixed(2)} ${outline[i][1].toFixed(2)}`;
   }
-  d.push('Z');
-
-  return d.join(' ');
+  return d + ' Z';
 }
 
 /**
@@ -46,9 +41,9 @@ export function renderStrokeToCanvas(
   stroke: Stroke,
   options?: StrokeOptions
 ): void {
-  const pts = stroke.pts.map((p) => [p[0], p[1], p[2] || 0.5]);
+  if (!stroke.pts || stroke.pts.length === 0) return;
 
-  const outline = getStroke(pts, {
+  const outline = getStroke(stroke.pts as unknown as number[][], {
     size: stroke.width || options?.size || 4,
     thinning: stroke.tool === 'highlighter' ? 0 : options?.thinning ?? 0.5,
     smoothing: options?.smoothing ?? 0.5,
