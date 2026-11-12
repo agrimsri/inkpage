@@ -86,12 +86,14 @@ export const App: React.FC = () => {
   const [showPasswordModal, setShowPasswordModal] = useState<boolean>(false);
   const [showVersionsModal, setShowVersionsModal] = useState<boolean>(false);
 
-  // Metrics for M0 Latency Spike
+  // Metrics for M0 Latency Spike (stored in ref to avoid re-rendering entire App tree on mouse move)
   const [metricSamples, setMetricSamples] = useState<MetricSample[]>([]);
+  const metricSamplesRef = useRef<MetricSample[]>([]);
 
-  // History stack for Undo/Redo
+  // History stack for Undo/Redo and snapshot throttling
   const historyRef = useRef<Page[]>([]);
   const historyIdxRef = useRef<number>(-1);
+  const lastSnapshotTimeRef = useRef<number>(0);
 
   // Hidden file inputs for attachments & images
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -271,28 +273,38 @@ export const App: React.FC = () => {
 
   const handleUpdatePage = useCallback(
     (updatedPage: Page) => {
-      // Append snapshot to page revision history
       const now = new Date().toISOString();
-      const revision: PageRevision = {
-        timestamp: now,
-        author: 'Current User',
-        snapshot: JSON.stringify(updatedPage),
-      };
+      const lastSnap = lastSnapshotTimeRef.current;
+      let newHistory = updatedPage.history || [];
+
+      // Only create a revision snapshot if at least 30s have elapsed or if history is empty
+      // CRITICAL: Strip history from cleanPage to prevent exponential recursive JSON stringification!
+      if (!lastSnap || Date.now() - lastSnap > 30000 || newHistory.length === 0) {
+        lastSnapshotTimeRef.current = Date.now();
+        const { history: _discard, ...cleanPage } = updatedPage;
+        const revision: PageRevision = {
+          timestamp: now,
+          author: 'Current User',
+          snapshot: JSON.stringify(cleanPage),
+        };
+        newHistory = [...newHistory.slice(-19), revision];
+      }
 
       const pageWithHistory: Page = {
         ...updatedPage,
         modified: now,
-        history: [...(updatedPage.history || []).slice(-19), revision],
+        history: newHistory,
       };
 
       setActivePage(pageWithHistory);
       setPages((prev) => prev.map((p) => (p.id === pageWithHistory.id ? pageWithHistory : p)));
 
-      // Add to undo history
-      const newHistory = historyRef.current.slice(0, historyIdxRef.current + 1);
-      newHistory.push(pageWithHistory);
-      historyRef.current = newHistory;
-      historyIdxRef.current = newHistory.length - 1;
+      // Add to undo history (capped to avoid memory bloat)
+      const newUndo = historyRef.current.slice(0, historyIdxRef.current + 1);
+      newUndo.push(pageWithHistory);
+      if (newUndo.length > 50) newUndo.shift();
+      historyRef.current = newUndo;
+      historyIdxRef.current = newUndo.length - 1;
 
       // Save to backend
       if (activeNotebook && activeSection) {
@@ -450,17 +462,15 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleRecordMetric = (
-    latency: number,
-    pointerType: string,
-    pressure: number,
-    coalesced: number
-  ) => {
-    setMetricSamples((prev) => [
-      ...prev.slice(-99),
-      { latency, pointerType, pressure, coalesced },
-    ]);
-  };
+  const handleRecordMetric = useCallback(
+    (latency: number, pointerType: string, pressure: number, coalesced: number) => {
+      metricSamplesRef.current.push({ latency, pointerType, pressure, coalesced });
+      if (metricSamplesRef.current.length > 100) {
+        metricSamplesRef.current.shift();
+      }
+    },
+    []
+  );
 
   // Note Tags and Format helpers
   const handleApplyTag = (tagType: string) => {
@@ -1192,7 +1202,10 @@ export const App: React.FC = () => {
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <button
-                onClick={() => setShowSpikeDashboard(true)}
+                onClick={() => {
+                  setMetricSamples([...metricSamplesRef.current]);
+                  setShowSpikeDashboard(true);
+                }}
                 style={{
                   padding: '4px 8px',
                   borderRadius: 4,
@@ -1342,9 +1355,12 @@ export const App: React.FC = () => {
 
       {showSpikeDashboard && (
         <M0LatencyDashboard
-          samples={metricSamples}
+          samples={metricSamples.length > 0 ? metricSamples : metricSamplesRef.current}
           onClose={() => setShowSpikeDashboard(false)}
-          onClear={() => setMetricSamples([])}
+          onClear={() => {
+            metricSamplesRef.current = [];
+            setMetricSamples([]);
+          }}
         />
       )}
 

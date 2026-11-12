@@ -1,6 +1,6 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import type { Stroke, StrokePoint, InkGroup } from '@inkpage/format';
-import { getSvgPathFromStroke, renderStrokeToCanvas } from '../utils/ink';
+import { renderStrokeToCanvas } from '../utils/ink';
 
 export interface InkCanvasProps {
   inkGroup: InkGroup;
@@ -19,41 +19,45 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
   color,
   width,
   zoom,
-  pan,
   onUpdateStrokes,
   onRecordMetric,
 }) => {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [currentStroke, setCurrentStroke] = useState<Stroke | null>(null);
-  const lastPenTimeRef = useRef<number>(0);
-  const isDrawingRef = useRef<boolean>(false);
+  // Double-buffering canvases:
+  // 1. completedCanvasRef: Renders all saved strokes (only redrawn on stroke changes)
+  // 2. activeCanvasRef: Renders ONLY the current in-progress stroke during pointermove (0 React state updates)
+  const completedCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const activeCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // Redraw all completed strokes to canvas
-  const redrawCanvas = useCallback(() => {
-    const canvas = canvasRef.current;
+  const isDrawingRef = useRef<boolean>(false);
+  const activeStrokeRef = useRef<Stroke | null>(null);
+  const lastPenTimeRef = useRef<number>(0);
+
+  const canvasWidth = Math.max(inkGroup.w || 3200, 3200);
+  const canvasHeight = Math.max(inkGroup.h || 2400, 2400);
+
+  // Redraw all completed strokes onto the background canvas
+  const redrawCompletedStrokes = useCallback(() => {
+    const canvas = completedCanvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    for (const stroke of inkGroup.strokes) {
-      renderStrokeToCanvas(ctx, stroke);
+    for (let i = 0; i < inkGroup.strokes.length; i++) {
+      renderStrokeToCanvas(ctx, inkGroup.strokes[i]);
     }
-
-    if (currentStroke) {
-      renderStrokeToCanvas(ctx, currentStroke);
-    }
-  }, [inkGroup.strokes, currentStroke]);
+  }, [inkGroup.strokes]);
 
   useEffect(() => {
-    redrawCanvas();
-  }, [redrawCanvas]);
+    redrawCompletedStrokes();
+  }, [redrawCompletedStrokes]);
 
+  // Pointer Down: Start active stroke
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (tool === 'select' || tool === 'lasso') return;
 
-    // Palm rejection: Ignore touch if pen was active in last 800ms
+    // Palm Rejection: Ignore touch if stylus/pen was active in last 800ms
     const now = performance.now();
     if (e.pointerType === 'pen') {
       lastPenTimeRef.current = now;
@@ -61,7 +65,10 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
       return;
     }
 
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {}
+
     isDrawingRef.current = true;
 
     const rect = e.currentTarget.getBoundingClientRect();
@@ -70,28 +77,38 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
     const pressure = e.pressure > 0 ? e.pressure : 0.5;
 
     if (tool === 'eraser') {
-      // Stroke eraser: remove any stroke near (x, y)
       eraseStrokeAt(x, y);
       return;
     }
 
+    const strokeWidth = tool === 'highlighter' ? Math.max(width * 3, 16) : width;
     const newStroke: Stroke = {
       id: `stroke_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       tool: tool === 'highlighter' ? 'highlighter' : 'pen',
-      color: tool === 'highlighter' ? color : color,
-      width: tool === 'highlighter' ? Math.max(width * 3, 14) : width,
-      pts: [[x, y, pressure, e.tiltX, e.timeStamp]],
+      color,
+      width: strokeWidth,
+      pts: [[x, y, pressure, e.tiltX || 0, e.timeStamp || now]],
     };
 
-    setCurrentStroke(newStroke);
+    activeStrokeRef.current = newStroke;
 
-    // Record latency metric
+    // Draw initial point onto the active canvas
+    const activeCanvas = activeCanvasRef.current;
+    if (activeCanvas) {
+      const actCtx = activeCanvas.getContext('2d');
+      if (actCtx) {
+        actCtx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
+        renderStrokeToCanvas(actCtx, newStroke);
+      }
+    }
+
     if (onRecordMetric && e.timeStamp > 0) {
       const latency = performance.now() - e.timeStamp;
       onRecordMetric(Math.max(0, latency), e.pointerType, pressure, 1);
     }
   };
 
+  // Pointer Move: Ultra-high frequency updates directly to active Canvas context
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!isDrawingRef.current) return;
 
@@ -104,13 +121,6 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
 
     const rect = e.currentTarget.getBoundingClientRect();
 
-    // Use coalesced events if available for high-frequency tablet events
-    const rawEvents = (e.nativeEvent as any).getCoalescedEvents
-      ? (e.nativeEvent as any).getCoalescedEvents()
-      : [e.nativeEvent];
-
-    const coalescedCount = rawEvents.length;
-
     if (tool === 'eraser') {
       const x = (e.clientX - rect.left) / zoom;
       const y = (e.clientY - rect.top) / zoom;
@@ -118,22 +128,35 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
       return;
     }
 
-    if (!currentStroke) return;
+    if (!activeStrokeRef.current) return;
 
+    // Extract coalesced points from high-precision stylus hardware
+    const rawEvents = (e.nativeEvent as any).getCoalescedEvents
+      ? (e.nativeEvent as any).getCoalescedEvents()
+      : [e.nativeEvent];
+
+    const coalescedCount = rawEvents.length;
     const newPoints: StrokePoint[] = [];
-    for (const ev of rawEvents) {
+
+    for (let i = 0; i < rawEvents.length; i++) {
+      const ev = rawEvents[i];
       const px = (ev.clientX - rect.left) / zoom;
       const py = (ev.clientY - rect.top) / zoom;
       const pressure = ev.pressure > 0 ? ev.pressure : 0.5;
-      newPoints.push([px, py, pressure, ev.tiltX, ev.timeStamp]);
+      newPoints.push([px, py, pressure, ev.tiltX || 0, ev.timeStamp || now]);
     }
 
-    const updated: Stroke = {
-      ...currentStroke,
-      pts: [...currentStroke.pts, ...newPoints],
-    };
+    activeStrokeRef.current.pts.push(...newPoints);
 
-    setCurrentStroke(updated);
+    // Direct Canvas 2D render - NO React state re-renders during active stroke!
+    const activeCanvas = activeCanvasRef.current;
+    if (activeCanvas) {
+      const actCtx = activeCanvas.getContext('2d');
+      if (actCtx) {
+        actCtx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
+        renderStrokeToCanvas(actCtx, activeStrokeRef.current);
+      }
+    }
 
     if (onRecordMetric && e.timeStamp > 0) {
       const latency = performance.now() - e.timeStamp;
@@ -141,24 +164,41 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
     }
   };
 
+  // Pointer Up: Finalize stroke and commit to page data
   const handlePointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!isDrawingRef.current) return;
     isDrawingRef.current = false;
-    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
 
-    if (currentStroke && currentStroke.pts.length > 0) {
-      onUpdateStrokes([...inkGroup.strokes, currentStroke]);
-      setCurrentStroke(null);
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {}
+
+    const finishedStroke = activeStrokeRef.current;
+    activeStrokeRef.current = null;
+
+    // Clear active stroke canvas layer
+    const activeCanvas = activeCanvasRef.current;
+    if (activeCanvas) {
+      const actCtx = activeCanvas.getContext('2d');
+      if (actCtx) {
+        actCtx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
+      }
+    }
+
+    // Commit finished stroke to inkGroup state
+    if (finishedStroke && finishedStroke.pts.length > 0) {
+      onUpdateStrokes([...inkGroup.strokes, finishedStroke]);
     }
   };
 
+  // Stroke Eraser with 18px radius collision
   const eraseStrokeAt = (x: number, y: number) => {
-    const threshold = 16;
+    const thresholdSq = 18 * 18;
     const remaining = inkGroup.strokes.filter((stroke) => {
       return !stroke.pts.some((pt) => {
         const dx = pt[0] - x;
         const dy = pt[1] - y;
-        return Math.sqrt(dx * dx + dy * dy) < threshold;
+        return dx * dx + dy * dy < thresholdSq;
       });
     });
 
@@ -171,29 +211,46 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
     <div
       style={{
         position: 'absolute',
-        left: inkGroup.x,
-        top: inkGroup.y,
-        width: Math.max(inkGroup.w, 800),
-        height: Math.max(inkGroup.h, 600),
+        left: inkGroup.x || 0,
+        top: inkGroup.y || 0,
+        width: canvasWidth,
+        height: canvasHeight,
         pointerEvents: tool === 'select' ? 'none' : 'auto',
       }}
     >
+      {/* Background Layer: All Completed Saved Strokes */}
       <canvas
-        ref={canvasRef}
-        width={Math.max(inkGroup.w, 800)}
-        height={Math.max(inkGroup.h, 600)}
+        ref={completedCanvasRef}
+        width={canvasWidth}
+        height={canvasHeight}
+        style={{
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          width: '100%',
+          height: '100%',
+          pointerEvents: 'none',
+        }}
+      />
+
+      {/* Foreground Layer: Active In-Progress Stroke */}
+      <canvas
+        ref={activeCanvasRef}
+        width={canvasWidth}
+        height={canvasHeight}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
         style={{
+          position: 'absolute',
+          left: 0,
+          top: 0,
           width: '100%',
           height: '100%',
           touchAction: 'none',
           cursor:
-            tool === 'pen'
-              ? 'crosshair'
-              : tool === 'highlighter'
+            tool === 'pen' || tool === 'highlighter'
               ? 'crosshair'
               : tool === 'eraser'
               ? 'cell'
