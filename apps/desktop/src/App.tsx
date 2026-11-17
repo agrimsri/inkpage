@@ -25,6 +25,8 @@ import {
   M0LatencyDashboard,
   PasswordModal,
   PageVersionsModal,
+  ThemeSwitcher,
+  ThemeProvider,
   ToolType,
   MetricSample,
   appleTheme,
@@ -34,7 +36,7 @@ import { Lock, Unlock } from 'lucide-react';
 
 const API_BASE_URL = 'http://127.0.0.1:3888';
 
-export const App: React.FC = () => {
+const AppContent: React.FC = () => {
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
   const [activeNotebook, setActiveNotebook] = useState<Notebook | null>(null);
   const [sections, setSections] = useState<Section[]>([]);
@@ -45,7 +47,7 @@ export const App: React.FC = () => {
   // Ribbon Navigation & Tools
   const [activeTab, setActiveTab] = useState<RibbonTab>('home');
   const [activeTool, setActiveTool] = useState<ToolType>('select');
-  const [activeColor, setActiveColor] = useState<string>(appleTheme.colors.accent);
+  const [activeColor, setActiveColor] = useState<string>('#0066cc');
   const [activeWidth, setActiveWidth] = useState<number>(4);
 
   // Typography & Formatting
@@ -58,7 +60,7 @@ export const App: React.FC = () => {
   const [isSubscript, setIsSubscript] = useState<boolean>(false);
   const [isSuperscript, setIsSuperscript] = useState<boolean>(false);
   const [highlightColor, setHighlightColor] = useState<string>('transparent');
-  const [fontColor, setFontColor] = useState<string>(appleTheme.colors.labelPrimary);
+  const [fontColor, setFontColor] = useState<string>('var(--color-label-primary, #1d1d1f)');
   const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>('left');
 
   // Drawing & Shapes
@@ -1100,7 +1102,7 @@ export const App: React.FC = () => {
       )}
 
       {/* Main Content Area */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
         {/* Full Microsoft OneNote Ribbon */}
         <Ribbon
           activeTab={activeTab}
@@ -1136,7 +1138,7 @@ export const App: React.FC = () => {
             setIsItalic(false);
             setIsUnderline(false);
             setFontSize(14);
-            setFontColor(appleTheme.colors.labelPrimary);
+            setFontColor('var(--color-label-primary, #1d1d1f)');
           }}
           textAlign={textAlign}
           onSelectTextAlign={setTextAlign}
@@ -1265,13 +1267,16 @@ export const App: React.FC = () => {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              padding: '8px 24px',
+              padding: '8px 20px',
               backgroundColor: appleTheme.colors.bgCanvas,
               borderBottom: `1px solid ${appleTheme.colors.borderSubtle}`,
               fontFamily: appleTheme.fonts.sans,
+              boxSizing: 'border-box',
+              width: '100%',
+              flexShrink: 0,
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14, flex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, flex: 1, minWidth: 0, marginRight: 16 }}>
               <input
                 value={activePage.title}
                 onChange={(e) =>
@@ -1282,7 +1287,7 @@ export const App: React.FC = () => {
                 }
                 placeholder="Untitled Page"
                 style={{
-                  fontSize: 22,
+                  fontSize: 20,
                   fontWeight: 600,
                   letterSpacing: '-0.02em',
                   color: appleTheme.colors.labelPrimary,
@@ -1290,48 +1295,17 @@ export const App: React.FC = () => {
                   outline: 'none',
                   background: 'transparent',
                   fontFamily: appleTheme.fonts.sans,
-                  width: '60%',
+                  width: '100%',
+                  maxWidth: 460,
+                  minWidth: 80,
                 }}
               />
-              <span style={{ fontSize: 12, color: appleTheme.colors.labelTertiary, fontVariantNumeric: 'tabular-nums' }}>
-                Created: {new Date(activePage.created).toLocaleDateString()}
+              <span style={{ fontSize: 12, color: appleTheme.colors.labelTertiary, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                Created: {(() => {
+                  const d = new Date(activePage.created);
+                  return !isNaN(d.getTime()) ? d.toLocaleDateString() : activePage.created?.substring(0, 10) || 'Recently';
+                })()}
               </span>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <button
-                onClick={() => {
-                  setMetricSamples([...metricSamplesRef.current]);
-                  setShowSpikeDashboard(true);
-                }}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  height: 28,
-                  padding: '0 12px',
-                  borderRadius: appleTheme.radii.pill,
-                  border: `1px solid ${appleTheme.colors.borderSubtle}`,
-                  backgroundColor: appleTheme.colors.bgSubtle,
-                  color: appleTheme.colors.labelSecondary,
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  transition: appleTheme.transitions.fast,
-                }}
-                title="View Stylus Latency & Hardware Monitor"
-              >
-                <span
-                  style={{
-                    width: 7,
-                    height: 7,
-                    borderRadius: '50%',
-                    backgroundColor: appleTheme.colors.success,
-                    display: 'inline-block',
-                  }}
-                />
-                <span>M0 Latency Gate (≤25ms)</span>
-              </button>
             </div>
           </div>
         )}
@@ -1503,5 +1477,13 @@ export const App: React.FC = () => {
         />
       )}
     </div>
+  );
+};
+
+export const App: React.FC = () => {
+  return (
+    <ThemeProvider>
+      <AppContent />
+    </ThemeProvider>
   );
 };

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import type { ToolType } from './ToolPalette';
 import type { ShapeType } from '@inkpage/format';
-import { appleTheme, appleStyles } from '../theme';
+import { appleTheme, appleStyles, useTheme } from '../theme';
+import { ThemeSwitcher } from './ThemeSwitcher';
 import {
   Undo2,
   Redo2,
@@ -205,11 +206,14 @@ const PASTEL_PAGE_COLORS = [
   { name: 'Gray', color: '#f8fafc' },
 ];
 
-const PEN_COLORS = ['#1d1d1f', '#0071e3', '#d70015', '#1a7f37', '#8944ab', '#9e5900'];
+const LIGHT_PEN_COLORS = ['#1d1d1f', '#0071e3', '#d70015', '#1a7f37', '#8944ab', '#9e5900'];
+const DARK_PEN_COLORS = ['#f5f5f7', '#2997ff', '#ff453a', '#32d74b', '#bf5af2', '#ffd60a'];
 const HIGHLIGHT_COLORS = ['#fef08a', '#bbf7d0', '#bae6fd', '#fbcfe8', '#fed7aa'];
 const PEN_WIDTHS = [2, 4, 8, 14];
 
 export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
+  const { isDark } = useTheme();
+  const penColors = isDark ? DARK_PEN_COLORS : LIGHT_PEN_COLORS;
   const [showTablePicker, setShowTablePicker] = useState(false);
   const [hoverGrid, setHoverGrid] = useState<{ r: number; c: number }>({ r: 3, c: 3 });
   const [showTagsMenu, setShowTagsMenu] = useState(false);
@@ -241,6 +245,8 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
           gap: 8,
           height: 40,
           boxSizing: 'border-box',
+          width: '100%',
+          flexShrink: 0,
         }}
       >
         {/* Quick Access Toolbar */}
@@ -286,6 +292,11 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
         </div>
 
         <div style={{ flex: 1 }} />
+
+        {/* Global Header Theme Switcher (Compact Segmented Icons) */}
+        <ThemeSwitcher size="sm" compact={true} />
+
+        <div style={{ width: 8 }} />
 
         {/* Full Page View Button */}
         <button
@@ -752,7 +763,7 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
 
               {/* Color swatches */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginLeft: 6 }}>
-                {(props.activeTool === 'highlighter' ? HIGHLIGHT_COLORS : PEN_COLORS).map((c) => (
+                {(props.activeTool === 'highlighter' ? HIGHLIGHT_COLORS : penColors).map((c) => (
                   <button
                     key={c}
                     onClick={() => props.onSelectColor(c)}
@@ -1002,6 +1013,13 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
 
             <Divider />
 
+            {/* Appearance / Theme */}
+            <RibbonGroup title="Appearance">
+              <ThemeSwitcher size="sm" />
+            </RibbonGroup>
+
+            <Divider />
+
             {/* Zoom Controls */}
             <RibbonGroup title="Zoom">
               <button onClick={props.onZoomIn} style={actionButtonStyle} title="Zoom In (Ctrl++)">
@@ -1195,7 +1213,7 @@ const selectStyle: React.CSSProperties = {
   transition: appleTheme.transitions.fast,
   appearance: 'none',
   WebkitAppearance: 'none',
-  backgroundImage: `url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%236e6e73' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
+  backgroundImage: 'var(--select-arrow-icon)',
   backgroundRepeat: 'no-repeat',
   backgroundPosition: 'right 6px center',
 };

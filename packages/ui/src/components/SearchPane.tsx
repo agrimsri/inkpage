@@ -76,6 +76,7 @@ export const SearchPane: React.FC<SearchPaneProps> = ({
         </div>
         <button
           onClick={onClose}
+          title="Close Search Pane"
           style={{
             border: 'none',
             background: 'none',

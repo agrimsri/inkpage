@@ -54,12 +54,12 @@ export const VirtualRuler: React.FC<VirtualRulerProps> = ({ visible, onClose }) 
         top: pos.y,
         width: 520,
         height: 74,
-        backgroundColor: 'rgba(255, 255, 255, 0.78)',
+        backgroundColor: appleTheme.colors.glassBg,
         backdropFilter: 'blur(24px) saturate(180%)',
         WebkitBackdropFilter: 'blur(24px) saturate(180%)',
-        border: '1px solid rgba(0, 0, 0, 0.12)',
+        border: `1px solid ${appleTheme.colors.borderMedium}`,
         borderRadius: appleTheme.radii.lg,
-        boxShadow: '0 16px 40px rgba(0, 0, 0, 0.16), 0 0 0 1px rgba(255, 255, 255, 0.5) inset',
+        boxShadow: appleTheme.shadows.popover,
         transform: `rotate(${angle}deg)`,
         transformOrigin: 'center center',
         cursor: 'grab',
@@ -80,7 +80,7 @@ export const VirtualRuler: React.FC<VirtualRulerProps> = ({ visible, onClose }) 
             style={{
               width: 1,
               height: i % 5 === 0 ? 14 : 7,
-              backgroundColor: 'rgba(0, 0, 0, 0.55)',
+              backgroundColor: appleTheme.colors.labelSecondary,
             }}
           />
         ))}
@@ -94,7 +94,7 @@ export const VirtualRuler: React.FC<VirtualRulerProps> = ({ visible, onClose }) 
             alignItems: 'center',
             padding: '2px 8px',
             borderRadius: appleTheme.radii.pill,
-            backgroundColor: 'rgba(0, 0, 0, 0.06)',
+            backgroundColor: appleTheme.colors.bgSubtle,
             fontSize: 13,
             fontWeight: 700,
             color: appleTheme.colors.labelPrimary,
@@ -115,7 +115,7 @@ export const VirtualRuler: React.FC<VirtualRulerProps> = ({ visible, onClose }) 
               padding: '0 8px',
               borderRadius: appleTheme.radii.pill,
               border: `1px solid ${appleTheme.colors.borderMedium}`,
-              backgroundColor: 'rgba(255, 255, 255, 0.8)',
+              backgroundColor: appleTheme.colors.bgCard,
               color: appleTheme.colors.labelPrimary,
               fontSize: 11,
               fontWeight: 600,
@@ -156,7 +156,7 @@ export const VirtualRuler: React.FC<VirtualRulerProps> = ({ visible, onClose }) 
             style={{
               width: 1,
               height: i % 5 === 0 ? 14 : 7,
-              backgroundColor: 'rgba(0, 0, 0, 0.55)',
+              backgroundColor: appleTheme.colors.labelSecondary,
             }}
           />
         ))}

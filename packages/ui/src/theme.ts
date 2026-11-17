@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
 
 /**
  * Apple Design Language Design Tokens (macOS / iPadOS inspired)
@@ -9,61 +9,249 @@ import React from 'react';
  * - SF Pro typographic hierarchy
  * - Calculated nested border radii (innerRadius = outerRadius - padding)
  * - Matched control heights & balanced icon insets
+ * - Complete macOS Dark Mode support with deep dark surfaces, soft border highlights, and vibrant accents
  */
 
+export type ThemeMode = 'light' | 'dark' | 'system';
+
+export interface ThemeColors {
+  // Primary surfaces
+  bgCanvas: string;
+  bgWindow: string;
+  bgSidebar: string;
+  bgSidebarRail: string;
+  bgCard: string;
+  bgCardHover: string;
+  bgCardActive: string;
+  bgSubtle: string;
+  bgSubtleHover: string;
+  bgSubtleActive: string;
+
+  // Translucency & Glassmorphism
+  glassBg: string;
+  glassDarkBg: string;
+  modalOverlay: string;
+
+  // Text & Labels (WCAG AA/AAA compliant)
+  labelPrimary: string;
+  labelSecondary: string;
+  labelTertiary: string;
+  labelQuaternary: string;
+  labelOnAccent: string;
+
+  // Borders & Hairlines
+  borderSubtle: string;
+  borderMedium: string;
+  borderHeavy: string;
+  borderDarkSubtle: string;
+
+  // Accent & Semantic System Colors
+  accent: string;
+  accentHover: string;
+  accentActive: string;
+  accentTint: string;
+  accentTintHover: string;
+  accentFocusRing: string;
+
+  destructive: string;
+  destructiveHover: string;
+  destructiveTint: string;
+  destructiveTintHover: string;
+
+  success: string;
+  successTint: string;
+
+  warning: string;
+  warningTint: string;
+
+  purple: string;
+  purpleTint: string;
+}
+
+export interface ThemeShadows {
+  subtle: string;
+  control: string;
+  card: string;
+  popover: string;
+  modal: string;
+  segmented: string;
+}
+
+/**
+ * Apple macOS Light Theme Colors
+ */
+export const appleLightThemeColors: ThemeColors = {
+  bgCanvas: '#ffffff',
+  bgWindow: '#f5f5f7',
+  bgSidebar: '#f6f6f8',
+  bgSidebarRail: '#1c1c1e',
+  bgCard: '#ffffff',
+  bgCardHover: '#f5f5f7',
+  bgCardActive: '#e5e5ea',
+  bgSubtle: 'rgba(0, 0, 0, 0.04)',
+  bgSubtleHover: 'rgba(0, 0, 0, 0.07)',
+  bgSubtleActive: 'rgba(0, 0, 0, 0.12)',
+
+  glassBg: 'rgba(255, 255, 255, 0.82)',
+  glassDarkBg: 'rgba(28, 28, 30, 0.85)',
+  modalOverlay: 'rgba(0, 0, 0, 0.36)',
+
+  labelPrimary: '#1d1d1f',
+  labelSecondary: '#555558',
+  labelTertiary: '#6c6c70',
+  labelQuaternary: '#8e8e93',
+  labelOnAccent: '#ffffff',
+
+  borderSubtle: 'rgba(0, 0, 0, 0.07)',
+  borderMedium: 'rgba(0, 0, 0, 0.13)',
+  borderHeavy: 'rgba(0, 0, 0, 0.22)',
+  borderDarkSubtle: 'rgba(255, 255, 255, 0.12)',
+
+  accent: '#0066cc',
+  accentHover: '#0071e3',
+  accentActive: '#0055b3',
+  accentTint: 'rgba(0, 102, 204, 0.08)',
+  accentTintHover: 'rgba(0, 102, 204, 0.14)',
+  accentFocusRing: 'rgba(0, 102, 204, 0.28)',
+
+  destructive: '#d70015',
+  destructiveHover: '#b50012',
+  destructiveTint: 'rgba(215, 0, 21, 0.08)',
+  destructiveTintHover: 'rgba(215, 0, 21, 0.14)',
+
+  success: '#1a7f37',
+  successTint: 'rgba(26, 127, 55, 0.09)',
+
+  warning: '#9e5900',
+  warningTint: 'rgba(158, 89, 0, 0.09)',
+
+  purple: '#8944ab',
+  purpleTint: 'rgba(137, 68, 171, 0.09)',
+};
+
+/**
+ * Apple macOS Dark Theme Colors (Deep dark surfaces, soft borders, vibrant accents)
+ */
+export const appleDarkThemeColors: ThemeColors = {
+  bgCanvas: '#1c1c1e',
+  bgWindow: '#141416',
+  bgSidebar: '#1a1a1c',
+  bgSidebarRail: '#121214',
+  bgCard: '#252528',
+  bgCardHover: '#2c2c2e',
+  bgCardActive: '#36363a',
+  bgSubtle: 'rgba(255, 255, 255, 0.06)',
+  bgSubtleHover: 'rgba(255, 255, 255, 0.10)',
+  bgSubtleActive: 'rgba(255, 255, 255, 0.16)',
+
+  glassBg: 'rgba(32, 32, 36, 0.85)',
+  glassDarkBg: 'rgba(18, 18, 20, 0.90)',
+  modalOverlay: 'rgba(0, 0, 0, 0.65)',
+
+  labelPrimary: '#f5f5f7',
+  labelSecondary: '#a1a1a6',
+  labelTertiary: '#8e8e93',
+  labelQuaternary: '#636366',
+  labelOnAccent: '#ffffff',
+
+  borderSubtle: 'rgba(255, 255, 255, 0.08)',
+  borderMedium: 'rgba(255, 255, 255, 0.14)',
+  borderHeavy: 'rgba(255, 255, 255, 0.24)',
+  borderDarkSubtle: 'rgba(255, 255, 255, 0.08)',
+
+  accent: '#2997ff',
+  accentHover: '#40a9ff',
+  accentActive: '#147ce5',
+  accentTint: 'rgba(41, 151, 255, 0.16)',
+  accentTintHover: 'rgba(41, 151, 255, 0.26)',
+  accentFocusRing: 'rgba(41, 151, 255, 0.38)',
+
+  destructive: '#ff453a',
+  destructiveHover: '#ff6961',
+  destructiveTint: 'rgba(255, 69, 58, 0.16)',
+  destructiveTintHover: 'rgba(255, 69, 58, 0.26)',
+
+  success: '#32d74b',
+  successTint: 'rgba(50, 215, 75, 0.16)',
+
+  warning: '#ffd60a',
+  warningTint: 'rgba(255, 214, 10, 0.16)',
+
+  purple: '#bf5af2',
+  purpleTint: 'rgba(191, 90, 242, 0.16)',
+};
+
+export const appleLightShadows: ThemeShadows = {
+  subtle: '0 1px 2px rgba(0, 0, 0, 0.04)',
+  control: '0 1px 2px rgba(0, 0, 0, 0.06)',
+  card: '0 2px 8px rgba(0, 0, 0, 0.05), 0 0 1px rgba(0, 0, 0, 0.08)',
+  popover: '0 10px 30px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.06)',
+  modal: '0 24px 60px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.08)',
+  segmented: '0 1px 3px rgba(0, 0, 0, 0.08), 0 0.5px 1px rgba(0, 0, 0, 0.06)',
+};
+
+export const appleDarkShadows: ThemeShadows = {
+  subtle: '0 1px 2px rgba(0, 0, 0, 0.25)',
+  control: '0 1px 2px rgba(0, 0, 0, 0.35)',
+  card: '0 2px 8px rgba(0, 0, 0, 0.40), 0 0 1px rgba(255, 255, 255, 0.08)',
+  popover: '0 12px 32px rgba(0, 0, 0, 0.60), 0 0 0 1px rgba(255, 255, 255, 0.10)',
+  modal: '0 24px 64px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.12)',
+  segmented: '0 1px 3px rgba(0, 0, 0, 0.40), 0 0.5px 1px rgba(255, 255, 255, 0.06)',
+};
+
+/**
+ * Universal Theme Tokens
+ * Colors and shadows dynamically bind to CSS variables with light theme fallbacks,
+ * enabling instantaneous zero-flicker theme switching across all components.
+ */
 export const appleTheme = {
   colors: {
-    // Primary surfaces
-    bgCanvas: '#ffffff',
-    bgWindow: '#f5f5f7',
-    bgSidebar: '#f6f6f8',
-    bgSidebarRail: '#1c1c1e',
-    bgCard: '#ffffff',
-    bgCardHover: '#f5f5f7',
-    bgCardActive: '#e5e5ea',
-    bgSubtle: 'rgba(0, 0, 0, 0.04)',
-    bgSubtleHover: 'rgba(0, 0, 0, 0.07)',
-    bgSubtleActive: 'rgba(0, 0, 0, 0.12)',
+    bgCanvas: 'var(--color-bg-canvas, #ffffff)',
+    bgWindow: 'var(--color-bg-window, #f5f5f7)',
+    bgSidebar: 'var(--color-bg-sidebar, #f6f6f8)',
+    bgSidebarRail: 'var(--color-bg-sidebar-rail, #1c1c1e)',
+    bgCard: 'var(--color-bg-card, #ffffff)',
+    bgCardHover: 'var(--color-bg-card-hover, #f5f5f7)',
+    bgCardActive: 'var(--color-bg-card-active, #e5e5ea)',
+    bgSubtle: 'var(--color-bg-subtle, rgba(0, 0, 0, 0.04))',
+    bgSubtleHover: 'var(--color-bg-subtle-hover, rgba(0, 0, 0, 0.07))',
+    bgSubtleActive: 'var(--color-bg-subtle-active, rgba(0, 0, 0, 0.12))',
 
-    // Translucency & Glassmorphism
-    glassBg: 'rgba(255, 255, 255, 0.82)',
-    glassDarkBg: 'rgba(28, 28, 30, 0.85)',
-    modalOverlay: 'rgba(0, 0, 0, 0.36)',
+    glassBg: 'var(--color-glass-bg, rgba(255, 255, 255, 0.82))',
+    glassDarkBg: 'var(--color-glass-dark-bg, rgba(28, 28, 30, 0.85))',
+    modalOverlay: 'var(--color-modal-overlay, rgba(0, 0, 0, 0.36))',
 
-    // Text & Labels (WCAG AA/AAA compliant)
-    labelPrimary: '#1d1d1f',      // Contrast 16.8:1 against #ffffff (AAA)
-    labelSecondary: '#555558',    // Contrast 7.3:1 against #ffffff (AAA)
-    labelTertiary: '#6c6c70',     // Contrast 5.2:1 against #ffffff (AA)
-    labelQuaternary: '#8e8e93',   // Subtle watermark / disabled text
-    labelOnAccent: '#ffffff',
+    labelPrimary: 'var(--color-label-primary, #1d1d1f)',
+    labelSecondary: 'var(--color-label-secondary, #555558)',
+    labelTertiary: 'var(--color-label-tertiary, #6c6c70)',
+    labelQuaternary: 'var(--color-label-quaternary, #8e8e93)',
+    labelOnAccent: 'var(--color-label-on-accent, #ffffff)',
 
-    // Borders & Hairlines
-    borderSubtle: 'rgba(0, 0, 0, 0.07)',
-    borderMedium: 'rgba(0, 0, 0, 0.13)',
-    borderHeavy: 'rgba(0, 0, 0, 0.22)',
-    borderDarkSubtle: 'rgba(255, 255, 255, 0.12)',
+    borderSubtle: 'var(--color-border-subtle, rgba(0, 0, 0, 0.07))',
+    borderMedium: 'var(--color-border-medium, rgba(0, 0, 0, 0.13))',
+    borderHeavy: 'var(--color-border-heavy, rgba(0, 0, 0, 0.22))',
+    borderDarkSubtle: 'var(--color-border-dark-subtle, rgba(255, 255, 255, 0.12))',
 
-    // Accent & Semantic System Colors
-    accent: '#0066cc',            // Apple System Blue (WCAG AA: 5.6:1 on #fff, 5.1:1 on #f5f5f7)
-    accentHover: '#0071e3',
-    accentActive: '#0055b3',
-    accentTint: 'rgba(0, 102, 204, 0.08)',
-    accentTintHover: 'rgba(0, 102, 204, 0.14)',
-    accentFocusRing: 'rgba(0, 102, 204, 0.28)',
+    accent: 'var(--color-accent, #0066cc)',
+    accentHover: 'var(--color-accent-hover, #0071e3)',
+    accentActive: 'var(--color-accent-active, #0055b3)',
+    accentTint: 'var(--color-accent-tint, rgba(0, 102, 204, 0.08))',
+    accentTintHover: 'var(--color-accent-tint-hover, rgba(0, 102, 204, 0.14))',
+    accentFocusRing: 'var(--color-accent-focus-ring, rgba(0, 102, 204, 0.28))',
 
-    destructive: '#d70015',       // Apple System Red (5.4:1 AA)
-    destructiveHover: '#b50012',
-    destructiveTint: 'rgba(215, 0, 21, 0.08)',
-    destructiveTintHover: 'rgba(215, 0, 21, 0.14)',
+    destructive: 'var(--color-destructive, #d70015)',
+    destructiveHover: 'var(--color-destructive-hover, #b50012)',
+    destructiveTint: 'var(--color-destructive-tint, rgba(215, 0, 21, 0.08))',
+    destructiveTintHover: 'var(--color-destructive-tint-hover, rgba(215, 0, 21, 0.14))',
 
-    success: '#1a7f37',           // Apple System Green (5.1:1 AA compliant)
-    successTint: 'rgba(26, 127, 55, 0.09)',
+    success: 'var(--color-success, #1a7f37)',
+    successTint: 'var(--color-success-tint, rgba(26, 127, 55, 0.09))',
 
-    warning: '#9e5900',           // Apple System Amber (5.4:1 AA compliant)
-    warningTint: 'rgba(158, 89, 0, 0.09)',
+    warning: 'var(--color-warning, #9e5900)',
+    warningTint: 'var(--color-warning-tint, rgba(158, 89, 0, 0.09))',
 
-    purple: '#8944ab',            // Apple System Purple (6.0:1 AA)
-    purpleTint: 'rgba(137, 68, 171, 0.09)',
+    purple: 'var(--color-purple, #8944ab)',
+    purpleTint: 'var(--color-purple-tint, rgba(137, 68, 171, 0.09))',
   },
 
   fonts: {
@@ -82,12 +270,12 @@ export const appleTheme = {
   },
 
   shadows: {
-    subtle: '0 1px 2px rgba(0, 0, 0, 0.04)',
-    control: '0 1px 2px rgba(0, 0, 0, 0.06)',
-    card: '0 2px 8px rgba(0, 0, 0, 0.05), 0 0 1px rgba(0, 0, 0, 0.08)',
-    popover: '0 10px 30px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.06)',
-    modal: '0 24px 60px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.08)',
-    segmented: '0 1px 3px rgba(0, 0, 0, 0.08), 0 0.5px 1px rgba(0, 0, 0, 0.06)',
+    subtle: 'var(--shadow-subtle, 0 1px 2px rgba(0, 0, 0, 0.04))',
+    control: 'var(--shadow-control, 0 1px 2px rgba(0, 0, 0, 0.06))',
+    card: 'var(--shadow-card, 0 2px 8px rgba(0, 0, 0, 0.05), 0 0 1px rgba(0, 0, 0, 0.08))',
+    popover: 'var(--shadow-popover, 0 10px 30px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.06))',
+    modal: 'var(--shadow-modal, 0 24px 60px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.08))',
+    segmented: 'var(--shadow-segmented, 0 1px 3px rgba(0, 0, 0, 0.08), 0 0.5px 1px rgba(0, 0, 0, 0.06))',
   },
 
   transitions: {
@@ -98,9 +286,195 @@ export const appleTheme = {
 };
 
 /**
+ * CSS Variables Generator for Document Injection
+ */
+export function generateThemeCss(): string {
+  const lightColorVars = Object.entries(appleLightThemeColors)
+    .map(([key, value]) => `  --color-${toKebabCase(key)}: ${value};`)
+    .join('\n');
+  const lightShadowVars = Object.entries(appleLightShadows)
+    .map(([key, value]) => `  --shadow-${toKebabCase(key)}: ${value};`)
+    .join('\n');
+
+  const darkColorVars = Object.entries(appleDarkThemeColors)
+    .map(([key, value]) => `  --color-${toKebabCase(key)}: ${value};`)
+    .join('\n');
+  const darkShadowVars = Object.entries(appleDarkShadows)
+    .map(([key, value]) => `  --shadow-${toKebabCase(key)}: ${value};`)
+    .join('\n');
+
+  return `
+:root, [data-theme='light'] {
+${lightColorVars}
+${lightShadowVars}
+  --color-rule-line: rgba(0, 0, 0, 0.08);
+  --select-arrow-icon: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%236e6e73' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --scrollbar-thumb: rgba(0, 0, 0, 0.16);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.28);
+}
+
+[data-theme='dark'] {
+${darkColorVars}
+${darkShadowVars}
+  --color-rule-line: rgba(255, 255, 255, 0.08);
+  --select-arrow-icon: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%23a1a1a6' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --scrollbar-thumb: rgba(255, 255, 255, 0.20);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.35);
+}
+
+/* Ensure smooth theme transition */
+html, body, #root {
+  background-color: var(--color-bg-window);
+  color: var(--color-label-primary);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+[data-theme='dark'] ::selection {
+  background-color: rgba(41, 151, 255, 0.32);
+}
+
+[data-theme='dark'] input::placeholder,
+[data-theme='dark'] textarea::placeholder {
+  color: var(--color-label-tertiary);
+}
+`;
+}
+
+function toKebabCase(str: string): string {
+  return str.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+}
+
+/**
+ * Injects theme CSS tokens into the document head if not already present.
+ */
+export function injectThemeStyles(): void {
+  if (typeof document === 'undefined') return;
+  const STYLE_ID = 'inkpage-theme-tokens';
+  if (!document.getElementById(STYLE_ID)) {
+    const styleEl = document.createElement('style');
+    styleEl.id = STYLE_ID;
+    styleEl.textContent = generateThemeCss();
+    document.head.appendChild(styleEl);
+  }
+}
+
+// Automatically inject styles upon module initialization in browser environments
+if (typeof document !== 'undefined') {
+  injectThemeStyles();
+}
+
+/**
+ * LocalStorage and System Theme Helpers
+ */
+const THEME_STORAGE_KEY = 'inkpage_theme';
+
+export function getStoredTheme(): ThemeMode {
+  if (typeof window === 'undefined') return 'system';
+  try {
+    const val = localStorage.getItem(THEME_STORAGE_KEY);
+    if (val === 'light' || val === 'dark' || val === 'system') return val;
+  } catch {}
+  return 'system';
+}
+
+export function setStoredTheme(theme: ThemeMode): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, theme);
+  } catch {}
+}
+
+export function getSystemTheme(): 'light' | 'dark' {
+  if (typeof window === 'undefined') return 'light';
+  return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+    ? 'dark'
+    : 'light';
+}
+
+export function resolveTheme(mode: ThemeMode): 'light' | 'dark' {
+  return mode === 'system' ? getSystemTheme() : mode;
+}
+
+export function applyTheme(mode: ThemeMode): 'light' | 'dark' {
+  const resolved = resolveTheme(mode);
+  if (typeof document !== 'undefined') {
+    document.documentElement.setAttribute('data-theme', resolved);
+    document.documentElement.style.colorScheme = resolved;
+  }
+  return resolved;
+}
+
+/**
+ * Theme Context and Provider
+ */
+export interface ThemeContextValue {
+  theme: ThemeMode;
+  resolvedTheme: 'light' | 'dark';
+  setTheme: (mode: ThemeMode) => void;
+  isDark: boolean;
+}
+
+const ThemeContext = createContext<ThemeContextValue>({
+  theme: 'system',
+  resolvedTheme: 'light',
+  setTheme: () => {},
+  isDark: false,
+});
+
+export const ThemeProvider: React.FC<{ children: React.ReactNode; defaultTheme?: ThemeMode }> = ({
+  children,
+  defaultTheme,
+}) => {
+  const [theme, setThemeState] = useState<ThemeMode>(() => {
+    return defaultTheme || getStoredTheme();
+  });
+
+  const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>(() => {
+    return applyTheme(theme);
+  });
+
+  const setTheme = (mode: ThemeMode) => {
+    setThemeState(mode);
+    setStoredTheme(mode);
+    const resolved = applyTheme(mode);
+    setResolvedTheme(resolved);
+  };
+
+  useEffect(() => {
+    const resolved = applyTheme(theme);
+    setResolvedTheme(resolved);
+
+    if (theme === 'system' && typeof window !== 'undefined') {
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      const listener = () => {
+        const nextResolved = applyTheme('system');
+        setResolvedTheme(nextResolved);
+      };
+      mediaQuery.addEventListener('change', listener);
+      return () => mediaQuery.removeEventListener('change', listener);
+    }
+  }, [theme]);
+
+  const value = useMemo(
+    () => ({
+      theme,
+      resolvedTheme,
+      setTheme,
+      isDark: resolvedTheme === 'dark',
+    }),
+    [theme, resolvedTheme]
+  );
+
+  return React.createElement(ThemeContext.Provider, { value }, children);
+};
+
+export function useTheme(): ThemeContextValue {
+  return useContext(ThemeContext);
+}
+
+/**
  * Reusable Apple-styled CSS property generators
  */
-
 export const appleStyles = {
   // Primary Action Pill / Rounded Button
   primaryButton: (disabled = false, size: 'sm' | 'md' = 'md'): React.CSSProperties => {
@@ -223,7 +597,7 @@ export const appleStyles = {
     alignItems: 'center',
     justifyContent: 'center',
     padding: '4px 10px',
-    borderRadius: appleTheme.radii.sm, // outerRadius(8) - padding(2) = 6px (calculated nested radius)
+    borderRadius: appleTheme.radii.sm,
     border: 'none',
     backgroundColor: active ? appleTheme.colors.bgCard : 'transparent',
     color: active ? appleTheme.colors.labelPrimary : appleTheme.colors.labelSecondary,
@@ -252,7 +626,7 @@ export const appleStyles = {
     boxSizing: 'border-box',
   } as React.CSSProperties,
 
-  // Select Dropdown with Balanced Inset
+  // Select Dropdown with Balanced Inset and Dynamic Theme Arrow
   selectField: {
     height: 30,
     padding: '0 24px 0 8px',
@@ -267,7 +641,7 @@ export const appleStyles = {
     transition: appleTheme.transitions.fast,
     appearance: 'none',
     WebkitAppearance: 'none',
-    backgroundImage: `url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%236e6e73' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
+    backgroundImage: 'var(--select-arrow-icon)',
     backgroundRepeat: 'no-repeat',
     backgroundPosition: 'right 8px center',
   } as React.CSSProperties,
@@ -289,7 +663,7 @@ export const appleStyles = {
     padding: 16,
   } as React.CSSProperties,
 
-  // Modal Card (outerRadius: 16, padding: 20)
+  // Modal Card (outerRadius: 16, padding: 24)
   modalCard: {
     backgroundColor: appleTheme.colors.bgCard,
     borderRadius: appleTheme.radii.xl,

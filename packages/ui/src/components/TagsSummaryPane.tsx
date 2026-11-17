@@ -74,6 +74,7 @@ export const TagsSummaryPane: React.FC<TagsSummaryPaneProps> = ({
         </div>
         <button
           onClick={onClose}
+          title="Close Tags Summary"
           style={{
             border: 'none',
             background: 'none',

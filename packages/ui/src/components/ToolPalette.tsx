@@ -13,7 +13,7 @@ import {
   Activity,
   Layers,
 } from 'lucide-react';
-import { appleTheme, appleStyles } from '../theme';
+import { appleTheme, appleStyles, useTheme } from '../theme';
 
 export type ToolType = 'select' | 'text' | 'pen' | 'highlighter' | 'eraser' | 'lasso';
 
@@ -32,7 +32,8 @@ export interface ToolPaletteProps {
   onToggleSpikeModal?: () => void;
 }
 
-const PEN_COLORS = ['#1d1d1f', '#0071e3', '#d70015', '#1a7f37', '#8944ab'];
+const LIGHT_PEN_COLORS = ['#1d1d1f', '#0071e3', '#d70015', '#1a7f37', '#8944ab'];
+const DARK_PEN_COLORS = ['#f5f5f7', '#2997ff', '#ff453a', '#32d74b', '#bf5af2'];
 const HIGHLIGHTER_COLORS = ['#fef08a', '#bbf7d0', '#bae6fd', '#fbcfe8'];
 const PEN_WIDTHS = [2, 4, 8];
 
@@ -50,6 +51,8 @@ export const ToolPalette: React.FC<ToolPaletteProps> = ({
   onRedo,
   onToggleSpikeModal,
 }) => {
+  const { isDark } = useTheme();
+  const penColors = isDark ? DARK_PEN_COLORS : LIGHT_PEN_COLORS;
   return (
     <div
       style={{
@@ -136,7 +139,7 @@ export const ToolPalette: React.FC<ToolPaletteProps> = ({
       {/* Pen Color Swatches */}
       {(activeTool === 'pen' || activeTool === 'select') && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          {PEN_COLORS.map((c) => (
+          {penColors.map((c) => (
             <button
               key={c}
               onClick={() => onSelectColor(c)}
@@ -247,20 +250,6 @@ export const ToolPalette: React.FC<ToolPaletteProps> = ({
           <span>File</span>
         </button>
       </div>
-
-      <div style={{ flex: 1 }} />
-
-      {/* M0 Ink Latency Spike Dashboard Button */}
-      {onToggleSpikeModal && (
-        <button
-          onClick={onToggleSpikeModal}
-          style={appleStyles.secondaryButton(false, 'sm')}
-          title="View M0 Pointer Latency & Stylus Metrics"
-        >
-          <Activity size={14} color={appleTheme.colors.accent} />
-          <span>M0 Latency Monitor</span>
-        </button>
-      )}
     </div>
   );
 };

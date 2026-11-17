@@ -52,16 +52,40 @@ export function renderStrokeToCanvas(
 
   if (outline.length === 0) return;
 
+  const isDarkCanvas =
+    typeof document !== 'undefined' &&
+    document.documentElement.getAttribute('data-theme') === 'dark';
+
   ctx.save();
   if (stroke.tool === 'highlighter') {
-    ctx.globalAlpha = 0.35;
-    ctx.globalCompositeOperation = 'multiply';
+    if (isDarkCanvas) {
+      // In dark mode, multiply blending darkens into blackness; source-over gives rich translucent highlight
+      ctx.globalAlpha = 0.45;
+      ctx.globalCompositeOperation = 'source-over';
+    } else {
+      ctx.globalAlpha = 0.35;
+      ctx.globalCompositeOperation = 'multiply';
+    }
   } else {
     ctx.globalAlpha = 1.0;
     ctx.globalCompositeOperation = 'source-over';
   }
 
-  ctx.fillStyle = stroke.color;
+  let drawColor = stroke.color;
+  // If in dark mode and ink stroke was drawn with black / dark charcoal, adapt to crisp high-contrast light ink
+  if (isDarkCanvas && stroke.tool !== 'highlighter') {
+    const lower = drawColor?.toLowerCase();
+    if (lower === '#1d1d1f' || lower === '#000000' || lower === '#111111' || lower === '#1c1c1e' || lower === 'black') {
+      drawColor = '#f5f5f7';
+    }
+  } else if (!isDarkCanvas && stroke.tool !== 'highlighter') {
+    const lower = drawColor?.toLowerCase();
+    if (lower === '#f5f5f7' || lower === '#ffffff' || lower === 'white') {
+      drawColor = '#1d1d1f';
+    }
+  }
+
+  ctx.fillStyle = drawColor;
   ctx.beginPath();
   ctx.moveTo(outline[0][0], outline[0][1]);
 

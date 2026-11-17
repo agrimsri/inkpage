@@ -427,10 +427,57 @@ export const Canvas: React.FC<CanvasProps> = React.memo(({
   };
 
   // Page background & dimensions
-  const pageBgColor = page.pageColor || '#ffffff';
+  const pageBgColor = (!page.pageColor || page.pageColor === '#ffffff')
+    ? appleTheme.colors.bgCanvas
+    : page.pageColor;
   const paperPreset = page.size?.preset || 'auto';
   const paperWidth = paperPreset === 'letter' ? 816 : paperPreset === 'a4' ? 794 : '100%';
   const paperMinHeight = paperPreset === 'letter' ? 1056 : paperPreset === 'a4' ? 1123 : '100%';
+  const ruleLineColor = (!page.background?.color || page.background.color === 'rgba(0, 0, 0, 0.13)')
+    ? 'var(--color-rule-line, rgba(0, 0, 0, 0.08))'
+    : page.background.color;
+
+  const handleDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const isBackground =
+      e.target === containerRef.current ||
+      (e.target as HTMLElement).classList.contains('canvas-background') ||
+      (e.target as HTMLElement).classList.contains('canvas-paper-sheet');
+
+    if (!isBackground) return;
+
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const screenX = e.clientX - rect.left;
+    const screenY = e.clientY - rect.top;
+    const canvasX = (screenX - pan.x) / zoom;
+    const canvasY = (screenY - pan.y) / zoom;
+
+    const newContainer: Container = {
+      id: `container_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      kind: 'container',
+      x: Math.round(canvasX),
+      y: Math.round(canvasY),
+      w: 480,
+      h: 200,
+      z: (page.items.length || 0) + 1,
+      doc: {
+        type: 'doc',
+        content: [
+          {
+            type: 'outlineItem',
+            attrs: { indent: 0 },
+            content: [{ type: 'text', text: '' }],
+          },
+        ],
+      },
+    };
+
+    onUpdatePage({
+      ...page,
+      items: [...page.items, newContainer],
+    });
+    setSelectedItemId(newContainer.id);
+  };
 
   return (
     <div
@@ -440,6 +487,7 @@ export const Canvas: React.FC<CanvasProps> = React.memo(({
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
+      onDoubleClick={handleDoubleClick}
       style={{
         position: 'relative',
         width: '100%',
@@ -482,9 +530,9 @@ export const Canvas: React.FC<CanvasProps> = React.memo(({
             border: paperPreset !== 'auto' ? `1px solid ${appleTheme.colors.borderMedium}` : 'none',
             backgroundImage:
               page.background?.kind === 'rule'
-                ? `linear-gradient(${page.background.color || appleTheme.colors.borderMedium} 1px, transparent 1px)`
+                ? `linear-gradient(${ruleLineColor} 1px, transparent 1px)`
                 : page.background?.kind === 'grid'
-                ? `radial-gradient(${page.background.color || appleTheme.colors.borderMedium} 1px, transparent 1px)`
+                ? `radial-gradient(${ruleLineColor} 1px, transparent 1px)`
                 : 'none',
             backgroundSize:
               page.background?.kind === 'rule'

@@ -14,5 +14,6 @@ export * from './components/TagsSummaryPane';
 export * from './components/ImportWizard';
 export * from './components/ExportModal';
 export * from './components/M0LatencyDashboard';
+export * from './components/ThemeSwitcher';
 export * from './utils/ink';
 export * from './theme';

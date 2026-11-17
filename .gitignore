@@ -17,6 +17,7 @@ Thumbs.db
 # Inkpage derived data
 .inkpage/
 *.inkpage-temp
+notebooks/
 
 # Private test corpora
 /fixtures/private/
