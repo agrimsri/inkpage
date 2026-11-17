@@ -50,6 +50,7 @@ import {
   Calendar,
   Clock,
   LayoutTemplate,
+  Type,
   MousePointer,
   Lasso,
   Pen,
@@ -120,6 +121,7 @@ export interface RibbonProps {
   onApplyHeading: (level: number) => void;
   onApplyTag: (tagType: string) => void;
   // Insert Actions
+  onInsertTextBox?: () => void;
   onInsertSpace: () => void;
   onInsertTable: (rows: number, cols: number) => void;
   onInsertFile: () => void;
@@ -341,6 +343,38 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
         {/* ==================== HOME TAB ==================== */}
         {props.activeTab === 'home' && (
           <>
+            {/* Text & Typing Group */}
+            <RibbonGroup title="Text">
+              <button
+                onClick={() => props.onSelectTool('text')}
+                style={activeToggleStyle(props.activeTool === 'text')}
+                title="Type Notes (T) - Click anywhere on canvas to type"
+              >
+                <Type size={16} />
+                <span>Type</span>
+              </button>
+              <button
+                onClick={() => props.onSelectTool('select')}
+                style={activeToggleStyle(props.activeTool === 'select')}
+                title="Select Objects (V)"
+              >
+                <MousePointer size={16} />
+                <span>Select</span>
+              </button>
+              {props.onInsertTextBox && (
+                <button
+                  onClick={props.onInsertTextBox}
+                  style={actionButtonStyle}
+                  title="Insert Text Box - Add movable note container"
+                >
+                  <FileText size={16} color={appleTheme.colors.accent} />
+                  <span>Text Box</span>
+                </button>
+              )}
+            </RibbonGroup>
+
+            <Divider />
+
             {/* Clipboard Group */}
             <RibbonGroup title="Clipboard">
               <button
@@ -553,6 +587,20 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
         {/* ==================== INSERT TAB ==================== */}
         {props.activeTab === 'insert' && (
           <>
+            {/* Text Box Insert */}
+            <RibbonGroup title="Text">
+              <button
+                onClick={props.onInsertTextBox}
+                title="Insert Text Box - Click to add typing container"
+                style={actionButtonStyle}
+              >
+                <Type size={16} color={appleTheme.colors.accent} />
+                <span>Text Box</span>
+              </button>
+            </RibbonGroup>
+
+            <Divider />
+
             {/* Space Tool */}
             <RibbonGroup title="Space">
               <button
@@ -731,9 +779,17 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
             {/* Tools */}
             <RibbonGroup title="Tools">
               <button
+                onClick={() => props.onSelectTool('text')}
+                style={activeToggleStyle(props.activeTool === 'text')}
+                title="Type Notes (T) - Click anywhere on canvas to type"
+              >
+                <Type size={16} />
+                <span>Type</span>
+              </button>
+              <button
                 onClick={() => props.onSelectTool('select')}
                 style={activeToggleStyle(props.activeTool === 'select')}
-                title="Type / Select (V)"
+                title="Select Objects (V)"
               >
                 <MousePointer size={16} />
                 <span>Select</span>
@@ -741,7 +797,7 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
               <button
                 onClick={() => props.onSelectTool('lasso')}
                 style={activeToggleStyle(props.activeTool === 'lasso')}
-                title="Lasso Selection (L)"
+                title="Lasso Selection (L) - Freehand loop to select strokes & items"
               >
                 <Lasso size={16} />
                 <span>Lasso</span>

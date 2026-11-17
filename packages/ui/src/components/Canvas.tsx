@@ -1,9 +1,11 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import type {
   Page,
   Item,
   Container,
   InkGroup,
+  Stroke,
+  StrokePoint,
   ImageItem,
   FileItem,
   TableItem,
@@ -31,6 +33,7 @@ import {
   Rows,
   Columns,
   Palette,
+  X,
 } from "lucide-react";
 
 export interface CanvasProps {
@@ -59,6 +62,35 @@ export interface CanvasProps {
   ) => void;
   selectedItemId?: string | null;
   onSelectItem?: (id: string | null) => void;
+  onSelectTool?: (tool: any) => void;
+  zoom?: number;
+  onZoomChange?: (zoom: number) => void;
+  pan?: { x: number; y: number };
+  onPanChange?: (pan: { x: number; y: number }) => void;
+}
+
+function pointInPolygon(p: { x: number; y: number }, poly: { x: number; y: number }[]): boolean {
+  if (poly.length < 3) return false;
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i].x, yi = poly[i].y;
+    const xj = poly[j].x, yj = poly[j].y;
+    const intersect = ((yi > p.y) !== (yj > p.y)) && (p.x < ((xj - xi) * (p.y - yi)) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function getPolygonBBox(poly: { x: number; y: number }[]): [number, number, number, number] {
+  let minX = poly[0].x, minY = poly[0].y, maxX = poly[0].x, maxY = poly[0].y;
+  for (let i = 1; i < poly.length; i++) {
+    const pt = poly[i];
+    if (pt.x < minX) minX = pt.x;
+    if (pt.x > maxX) maxX = pt.x;
+    if (pt.y < minY) minY = pt.y;
+    if (pt.y > maxY) maxY = pt.y;
+  }
+  return [minX, minY, maxX, maxY];
 }
 
 function getStarPoints(
@@ -99,12 +131,29 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
     onRecordMetric,
     selectedItemId: externalSelectedId,
     onSelectItem: externalSetSelectedId,
+    onSelectTool,
+    zoom: propZoom,
+    onZoomChange: propOnZoomChange,
+    pan: propPan,
+    onPanChange: propOnPanChange,
   }) => {
-    const [zoom, setZoom] = useState<number>(1.0);
-    const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-    const [internalSelectedId, setInternalSelectedId] = useState<string | null>(
-      null,
-    );
+    const [internalZoom, setInternalZoom] = useState<number>(1.0);
+    const [internalPan, setInternalPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+    const [internalSelectedId, setInternalSelectedId] = useState<string | null>(null);
+
+    const zoom = propZoom !== undefined ? propZoom : internalZoom;
+    const setZoom = useCallback((action: number | ((prev: number) => number)) => {
+      const next = typeof action === 'function' ? action(zoom) : action;
+      if (propOnZoomChange) propOnZoomChange(next);
+      else setInternalZoom(next);
+    }, [zoom, propOnZoomChange]);
+
+    const pan = propPan !== undefined ? propPan : internalPan;
+    const setPan = useCallback((action: { x: number; y: number } | ((prev: { x: number; y: number }) => { x: number; y: number })) => {
+      const next = typeof action === 'function' ? action(pan) : action;
+      if (propOnPanChange) propOnPanChange(next);
+      else setInternalPan(next);
+    }, [pan, propOnPanChange]);
 
     const selectedItemId =
       externalSelectedId !== undefined
@@ -115,11 +164,171 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
       else setInternalSelectedId(id);
     };
 
+    // Multi-selection for Lasso / Marquee / Select tool
+    const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
+    const [selectedStrokeIds, setSelectedStrokeIds] = useState<string[]>([]);
+
+    // Lasso drawing state
+    const [lassoPath, setLassoPath] = useState<{ x: number; y: number }[] | null>(null);
+    const lassoPointsRef = useRef<{ x: number; y: number }[] | null>(null);
+    const isLassoingRef = useRef<boolean>(false);
+
+    // Marquee selection box
+    const [marqueeBox, setMarqueeBox] = useState<{ startX: number; startY: number; currX: number; currY: number } | null>(null);
+    const marqueeBoxRef = useRef<{ startX: number; startY: number; currX: number; currY: number } | null>(null);
+    const isMarqueeRef = useRef<boolean>(false);
+
+    // Dragging whole selection (items + strokes)
+    const selectionDragRef = useRef<{
+      startX: number;
+      startY: number;
+      initialItems: { id: string; x: number; y: number }[];
+      initialStrokes: { id: string; pts: StrokePoint[] }[];
+    } | null>(null);
+
     const containerRef = useRef<HTMLDivElement | null>(null);
     const isPanningRef = useRef<boolean>(false);
     const panStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
     const isSpaceDownRef = useRef<boolean>(false);
     const [isSpaceDown, setIsSpaceDown] = useState(false);
+
+    const clearSelection = useCallback(() => {
+      setSelectedItemIds([]);
+      setSelectedStrokeIds([]);
+      setSelectedItemId(null);
+    }, [setSelectedItemId]);
+
+    // Find or create InkGroup item for pen drawing
+    const currentInkGroup = (page.items.find(
+      (i) => i.kind === "ink",
+    ) as InkGroup) || {
+      id: "ink_group_primary",
+      kind: "ink",
+      x: 0,
+      y: 0,
+      w: 3200,
+      h: 2400,
+      z: 10,
+      strokes: [],
+    };
+
+    const handleUpdateStrokes = useCallback(
+      (strokes: any[]) => {
+        const existingIndex = page.items.findIndex((i) => i.kind === "ink");
+        const updatedGroup: InkGroup = {
+          ...currentInkGroup,
+          strokes,
+        };
+
+        let newItems = [...page.items];
+        if (existingIndex >= 0) {
+          newItems[existingIndex] = updatedGroup;
+        } else {
+          newItems.push(updatedGroup);
+        }
+
+        onUpdatePage({
+          ...page,
+          items: newItems,
+        });
+      },
+      [page, currentInkGroup, onUpdatePage],
+    );
+
+    const deleteItem = useCallback(
+      (itemId: string) => {
+        onUpdatePage({
+          ...page,
+          items: page.items.filter((i) => i.id !== itemId),
+        });
+        if (selectedItemId === itemId) setSelectedItemId(null);
+        setSelectedItemIds((prev) => prev.filter((id) => id !== itemId));
+      },
+      [page, selectedItemId, onUpdatePage],
+    );
+
+    const handleDeleteSelection = useCallback(() => {
+      const remainingItems = page.items.filter(
+        (i) => !selectedItemIds.includes(i.id),
+      );
+      const remainingStrokes = currentInkGroup.strokes.filter(
+        (s) => !selectedStrokeIds.includes(s.id),
+      );
+      handleUpdateStrokes(remainingStrokes);
+      onUpdatePage({
+        ...page,
+        items: remainingItems.map((i) =>
+          i.kind === "ink" ? { ...i, strokes: remainingStrokes } : i,
+        ),
+      });
+      clearSelection();
+    }, [
+      page,
+      selectedItemIds,
+      selectedStrokeIds,
+      currentInkGroup.strokes,
+      handleUpdateStrokes,
+      onUpdatePage,
+      clearSelection,
+    ]);
+
+    const compositeBBox = useMemo(() => {
+      if (selectedItemIds.length === 0 && selectedStrokeIds.length === 0)
+        return null;
+      let minX = Infinity,
+        minY = Infinity,
+        maxX = -Infinity,
+        maxY = -Infinity;
+
+      for (const id of selectedItemIds) {
+        const item = page.items.find((i) => i.id === id);
+        if (item) {
+          minX = Math.min(minX, item.x);
+          minY = Math.min(minY, item.y);
+          maxX = Math.max(maxX, item.x + item.w);
+          maxY = Math.max(maxY, item.y + (item.h || 80));
+        }
+      }
+
+      for (const id of selectedStrokeIds) {
+        const stroke = currentInkGroup.strokes?.find((s) => s.id === id);
+        if (stroke && stroke.pts) {
+          for (const pt of stroke.pts) {
+            minX = Math.min(minX, pt[0]);
+            minY = Math.min(minY, pt[1]);
+            maxX = Math.max(maxX, pt[0]);
+            maxY = Math.max(maxY, pt[1]);
+          }
+        }
+      }
+
+      if (minX === Infinity) return null;
+      const padding = 8;
+      return {
+        x: minX - padding,
+        y: minY - padding,
+        w: maxX - minX + padding * 2,
+        h: maxY - minY + padding * 2,
+      };
+    }, [selectedItemIds, selectedStrokeIds, page.items, currentInkGroup.strokes]);
+
+    const startSelectionDrag = (e: React.PointerEvent) => {
+      e.stopPropagation();
+      const initialItems = page.items
+        .filter((i) => selectedItemIds.includes(i.id))
+        .map((i) => ({ id: i.id, x: i.x, y: i.y }));
+
+      const initialStrokes = currentInkGroup.strokes
+        .filter((s) => selectedStrokeIds.includes(s.id))
+        .map((s) => ({ id: s.id, pts: s.pts ? [...s.pts] : [] }));
+
+      selectionDragRef.current = {
+        startX: e.clientX,
+        startY: e.clientY,
+        initialItems,
+        initialStrokes,
+      };
+    };
 
     useEffect(() => {
       const handleKeyDown = (e: KeyboardEvent) => {
@@ -131,6 +340,19 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
         if (e.code === "Space" && !e.repeat && !isInput) {
           isSpaceDownRef.current = true;
           setIsSpaceDown(true);
+        }
+        if ((e.key === "Delete" || e.key === "Backspace") && !isInput) {
+          if (
+            selectedItemIds.length > 0 ||
+            selectedStrokeIds.length > 0 ||
+            selectedItemId
+          ) {
+            e.preventDefault();
+            handleDeleteSelection();
+          }
+        }
+        if (e.key === "Escape") {
+          clearSelection();
         }
       };
       const handleKeyUp = (e: KeyboardEvent) => {
@@ -153,7 +375,7 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
         window.removeEventListener("keyup", handleKeyUp);
         window.removeEventListener("blur", handleBlur);
       };
-    }, []);
+    }, [selectedItemIds, selectedStrokeIds, selectedItemId, handleDeleteSelection, clearSelection]);
 
     const [viewportSize, setViewportSize] = useState({ w: 1920, h: 1080 });
 
@@ -298,12 +520,37 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
         return;
       }
 
+      // Lasso Tool: start freehand lasso path
+      if (tool === "lasso") {
+        if (e.button === 0) {
+          try {
+            if (e.pointerId !== undefined && e.currentTarget?.setPointerCapture) {
+              e.currentTarget.setPointerCapture(e.pointerId);
+            }
+          } catch {}
+          isLassoingRef.current = true;
+          lassoPointsRef.current = [{ x: canvasX, y: canvasY }];
+          setLassoPath([{ x: canvasX, y: canvasY }]);
+          return;
+        }
+      }
+
       // Clicking on empty canvas
+      const targetEl = e.target as HTMLElement;
+      const isItem = Boolean(
+        targetEl.closest?.(".canvas-note-item") ||
+        targetEl.closest?.(".outline-container") ||
+        targetEl.closest?.(".container-move-bar") ||
+        targetEl.closest?.(".lasso-composite-box")
+      );
       const isBackground =
-        e.target === containerRef.current ||
-        (e.target as HTMLElement).classList.contains("canvas-viewport") ||
-        (e.target as HTMLElement).classList.contains("canvas-background") ||
-        (e.target as HTMLElement).classList.contains("canvas-paper-sheet");
+        !isItem &&
+        (e.target === containerRef.current ||
+          targetEl.classList?.contains?.("canvas-viewport") ||
+          targetEl.classList?.contains?.("canvas-background") ||
+          targetEl.classList?.contains?.("canvas-paper-sheet") ||
+          Boolean(targetEl.closest?.(".canvas-background")) ||
+          Boolean(targetEl.closest?.(".canvas-viewport")));
 
       if (isBackground) {
         if (tool === "text") {
@@ -313,7 +560,7 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
             x: Math.round(canvasX),
             y: Math.round(canvasY),
             w: 520,
-            h: 240,
+            h: 180,
             z: (page.items.length || 0) + 1,
             doc: {
               type: "doc",
@@ -332,27 +579,47 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
             items: [...page.items, newContainer],
           });
           setSelectedItemId(newContainer.id);
+          setSelectedItemIds([newContainer.id]);
+          setSelectedStrokeIds([]);
+          return;
         } else if (tool === "select") {
-          setSelectedItemId(null);
+          try {
+            if (e.pointerId !== undefined && e.currentTarget?.setPointerCapture) {
+              e.currentTarget.setPointerCapture(e.pointerId);
+            }
+          } catch {}
+          marqueeBoxRef.current = {
+            startX: canvasX,
+            startY: canvasY,
+            currX: canvasX,
+            currY: canvasY,
+          };
+          isMarqueeRef.current = true;
+          setMarqueeBox({
+            startX: canvasX,
+            startY: canvasY,
+            currX: canvasX,
+            currY: canvasY,
+          });
+          clearSelection();
         }
       }
     };
 
-  // Global safety cleanup: release any active pan or drag state if pointerup / cancel / blur occurs globally
+  // Global safety cleanup: release any active pan or drag state if window blur or cancel occurs globally
   useEffect(() => {
-    const handleGlobalPointerUp = () => {
+    const handleGlobalAbort = () => {
       isPanningRef.current = false;
       drawingShapeRef.current = null;
       draggingItemRef.current = null;
       resizingItemRef.current = null;
+      selectionDragRef.current = null;
     };
-    window.addEventListener('pointerup', handleGlobalPointerUp);
-    window.addEventListener('pointercancel', handleGlobalPointerUp);
-    window.addEventListener('blur', handleGlobalPointerUp);
+    window.addEventListener('pointercancel', handleGlobalAbort);
+    window.addEventListener('blur', handleGlobalAbort);
     return () => {
-      window.removeEventListener('pointerup', handleGlobalPointerUp);
-      window.removeEventListener('pointercancel', handleGlobalPointerUp);
-      window.removeEventListener('blur', handleGlobalPointerUp);
+      window.removeEventListener('pointercancel', handleGlobalAbort);
+      window.removeEventListener('blur', handleGlobalAbort);
     };
   }, []);
 
@@ -376,6 +643,65 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
         drawingShapeRef.current.currX = canvasX;
         drawingShapeRef.current.currY = canvasY;
         setDrawingShape({ ...drawingShapeRef.current });
+        return;
+      }
+
+      // Lasso Tool path accumulation
+      if (isLassoingRef.current && lassoPointsRef.current) {
+        lassoPointsRef.current.push({ x: canvasX, y: canvasY });
+        setLassoPath([...lassoPointsRef.current]);
+        return;
+      }
+
+      // Marquee box expansion
+      if (isMarqueeRef.current && marqueeBoxRef.current) {
+        marqueeBoxRef.current.currX = canvasX;
+        marqueeBoxRef.current.currY = canvasY;
+        setMarqueeBox({ ...marqueeBoxRef.current });
+        return;
+      }
+
+      // Moving multiple items and strokes selected by Lasso / Marquee
+      if (selectionDragRef.current) {
+        const dx = (e.clientX - selectionDragRef.current.startX) / zoom;
+        const dy = (e.clientY - selectionDragRef.current.startY) / zoom;
+
+        const updatedItems = page.items.map((item) => {
+          const init = selectionDragRef.current!.initialItems.find((i) => i.id === item.id);
+          if (init) {
+            return {
+              ...item,
+              x: Math.round(init.x + dx),
+              y: Math.round(init.y + dy),
+            };
+          }
+          return item;
+        });
+
+        const updatedStrokes = currentInkGroup.strokes.map((stroke) => {
+          const init = selectionDragRef.current!.initialStrokes.find((s) => s.id === stroke.id);
+          if (init) {
+            return {
+              ...stroke,
+              pts: init.pts.map((pt) => [
+                Math.round(pt[0] + dx),
+                Math.round(pt[1] + dy),
+                pt[2],
+                pt[3],
+                pt[4],
+              ] as StrokePoint),
+            };
+          }
+          return stroke;
+        });
+
+        handleUpdateStrokes(updatedStrokes);
+        onUpdatePage({
+          ...page,
+          items: updatedItems.map((i) =>
+            i.kind === "ink" ? { ...i, strokes: updatedStrokes } : i,
+          ),
+        });
         return;
       }
 
@@ -478,6 +804,154 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
         return;
       }
 
+      // Finalize Lasso Tool selection
+      if (isLassoingRef.current) {
+        isLassoingRef.current = false;
+        const poly = lassoPointsRef.current || [];
+        lassoPointsRef.current = null;
+        setLassoPath(null);
+
+        if (poly.length >= 3) {
+          const polyBBox = getPolygonBBox(poly);
+          const spreadX = polyBBox[2] - polyBBox[0];
+          const spreadY = polyBBox[3] - polyBBox[1];
+
+          if (spreadX > 6 || spreadY > 6) {
+            const matchedItemIds: string[] = [];
+            for (const item of page.items) {
+              if (item.kind === "ink") continue;
+              const w = item.w || 200;
+              const h = item.h || 80;
+              const center = { x: item.x + w / 2, y: item.y + h / 2 };
+              if (
+                pointInPolygon(center, poly) ||
+                pointInPolygon({ x: item.x, y: item.y }, poly) ||
+                pointInPolygon({ x: item.x + w, y: item.y + h }, poly)
+              ) {
+                matchedItemIds.push(item.id);
+              }
+            }
+
+            const matchedStrokeIds: string[] = [];
+            for (const stroke of currentInkGroup.strokes || []) {
+              if (!stroke.pts || stroke.pts.length === 0) continue;
+              const inLasso = stroke.pts.some((pt) =>
+                pointInPolygon({ x: pt[0], y: pt[1] }, poly),
+              );
+              if (inLasso) {
+                matchedStrokeIds.push(stroke.id);
+              }
+            }
+
+            setSelectedItemIds(matchedItemIds);
+            setSelectedStrokeIds(matchedStrokeIds);
+            if (matchedItemIds.length === 1 && matchedStrokeIds.length === 0) {
+              setSelectedItemId(matchedItemIds[0]);
+            } else {
+              setSelectedItemId(null);
+            }
+            return;
+          }
+        }
+
+        // Click with Lasso: check if hit item or stroke
+        if (poly.length > 0) {
+          const pt = poly[0];
+          const hitItem = page.items.find(
+            (i) =>
+              i.kind !== "ink" &&
+              pt.x >= i.x &&
+              pt.x <= i.x + i.w &&
+              pt.y >= i.y &&
+              pt.y <= i.y + (i.h || 80),
+          );
+          if (hitItem) {
+            setSelectedItemIds([hitItem.id]);
+            setSelectedStrokeIds([]);
+            setSelectedItemId(hitItem.id);
+          } else {
+            const hitStroke = currentInkGroup.strokes.find((s) =>
+              s.pts?.some((p) => Math.hypot(p[0] - pt.x, p[1] - pt.y) < 14),
+            );
+            if (hitStroke) {
+              setSelectedStrokeIds([hitStroke.id]);
+              setSelectedItemIds([]);
+              setSelectedItemId(null);
+            } else {
+              clearSelection();
+            }
+          }
+        }
+        return;
+      }
+
+      // Finalize Marquee Selection Box
+      if (isMarqueeRef.current) {
+        isMarqueeRef.current = false;
+        const box = marqueeBoxRef.current;
+        marqueeBoxRef.current = null;
+        setMarqueeBox(null);
+
+        if (box) {
+          const minX = Math.min(box.startX, box.currX);
+          const maxX = Math.max(box.startX, box.currX);
+          const minY = Math.min(box.startY, box.currY);
+          const maxY = Math.max(box.startY, box.currY);
+
+          if (maxX - minX > 8 || maxY - minY > 8) {
+            const matchedItemIds: string[] = [];
+            for (const item of page.items) {
+              if (item.kind === "ink") continue;
+              const w = item.w || 200;
+              const h = item.h || 80;
+              if (
+                !(
+                  item.x + w < minX ||
+                  item.x > maxX ||
+                  item.y + h < minY ||
+                  item.y > maxY
+                )
+              ) {
+                matchedItemIds.push(item.id);
+              }
+            }
+
+            const matchedStrokeIds: string[] = [];
+            for (const stroke of currentInkGroup.strokes || []) {
+              if (!stroke.pts) continue;
+              if (
+                stroke.pts.some(
+                  (pt) =>
+                    pt[0] >= minX &&
+                    pt[0] <= maxX &&
+                    pt[1] >= minY &&
+                    pt[1] <= maxY,
+                )
+              ) {
+                matchedStrokeIds.push(stroke.id);
+              }
+            }
+
+            setSelectedItemIds(matchedItemIds);
+            setSelectedStrokeIds(matchedStrokeIds);
+            if (matchedItemIds.length === 1 && matchedStrokeIds.length === 0) {
+              setSelectedItemId(matchedItemIds[0]);
+            } else {
+              setSelectedItemId(null);
+            }
+          } else {
+            clearSelection();
+          }
+        }
+        return;
+      }
+
+      // Finalize selection drag
+      if (selectionDragRef.current) {
+        selectionDragRef.current = null;
+        return;
+      }
+
       // Handle Note Container Shift+Drag merge logic
       if (draggingItemRef.current) {
         const draggedId = draggingItemRef.current.id;
@@ -512,6 +986,7 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
 
             onUpdatePage({ ...page, items: remainingItems });
             setSelectedItemId(targetContainer.id);
+            setSelectedItemIds([targetContainer.id]);
           }
         }
 
@@ -520,54 +995,6 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
 
       resizingItemRef.current = null;
     };
-
-    // Find or create InkGroup item for pen drawing
-    const currentInkGroup = (page.items.find(
-      (i) => i.kind === "ink",
-    ) as InkGroup) || {
-      id: "ink_group_primary",
-      kind: "ink",
-      x: 0,
-      y: 0,
-      w: 3200,
-      h: 2400,
-      z: 10,
-      strokes: [],
-    };
-
-    const handleUpdateStrokes = useCallback(
-      (strokes: any[]) => {
-        const existingIndex = page.items.findIndex((i) => i.kind === "ink");
-        const updatedGroup: InkGroup = {
-          ...currentInkGroup,
-          strokes,
-        };
-
-        let newItems = [...page.items];
-        if (existingIndex >= 0) {
-          newItems[existingIndex] = updatedGroup;
-        } else {
-          newItems.push(updatedGroup);
-        }
-
-        onUpdatePage({
-          ...page,
-          items: newItems,
-        });
-      },
-      [page, currentInkGroup, onUpdatePage],
-    );
-
-    const deleteItem = useCallback(
-      (itemId: string) => {
-        onUpdatePage({
-          ...page,
-          items: page.items.filter((i) => i.id !== itemId),
-        });
-        if (selectedItemId === itemId) setSelectedItemId(null);
-      },
-      [page, selectedItemId, onUpdatePage],
-    );
 
     const handleErasePoint = useCallback(
       (x: number, y: number) => {
@@ -644,11 +1071,21 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
     };
 
     const handleDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+      const targetEl = e.target as HTMLElement;
+      const isItem = Boolean(
+        targetEl.closest?.(".canvas-note-item") ||
+        targetEl.closest?.(".outline-container") ||
+        targetEl.closest?.(".container-move-bar") ||
+        targetEl.closest?.(".lasso-composite-box")
+      );
       const isBackground =
-        e.target === containerRef.current ||
-        (e.target as HTMLElement).classList.contains("canvas-viewport") ||
-        (e.target as HTMLElement).classList.contains("canvas-background") ||
-        (e.target as HTMLElement).classList.contains("canvas-paper-sheet");
+        !isItem &&
+        (e.target === containerRef.current ||
+          targetEl.classList?.contains?.("canvas-viewport") ||
+          targetEl.classList?.contains?.("canvas-background") ||
+          targetEl.classList?.contains?.("canvas-paper-sheet") ||
+          Boolean(targetEl.closest?.(".canvas-background")) ||
+          Boolean(targetEl.closest?.(".canvas-viewport")));
 
       if (!isBackground) return;
 
@@ -679,6 +1116,9 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
         items: [...page.items, newContainer],
       });
       setSelectedItemId(newContainer.id);
+      setSelectedItemIds([newContainer.id]);
+      setSelectedStrokeIds([]);
+      if (onSelectTool) onSelectTool("text");
     };
 
     const renderCanvasContent = () => (
@@ -686,12 +1126,29 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
         {/* Render Canvas Items */}
         {page.items.map((item) => {
           if (item.kind === "ink") return null;
-          const isSelected = selectedItemId === item.id;
+          const isSelected = selectedItemId === item.id || selectedItemIds.includes(item.id);
           const isShape = item.kind === "shape";
 
           return (
             <div
               key={item.id}
+              className="canvas-note-item"
+              onPointerDown={(e) => {
+                if (isShape && tool === "select") {
+                  e.stopPropagation();
+                  setSelectedItemId(item.id);
+                  setSelectedItemIds([item.id]);
+                  setSelectedStrokeIds([]);
+                  draggingItemRef.current = {
+                    id: item.id,
+                    startX: e.clientX,
+                    startY: e.clientY,
+                    initX: item.x,
+                    initY: item.y,
+                    isShift: e.shiftKey,
+                  };
+                }
+              }}
               style={{
                 position: "absolute",
                 left: item.x,
@@ -727,9 +1184,11 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
                   : "auto",
               }}
               onClick={(e) => {
-                if (tool === "select") {
+                if (tool === "select" || tool === "text") {
                   e.stopPropagation();
                   setSelectedItemId(item.id);
+                  setSelectedItemIds([item.id]);
+                  setSelectedStrokeIds([]);
                 }
               }}
             >
@@ -827,6 +1286,7 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
                   <OutlineEditor
                     container={item as Container}
                     isSelected={isSelected}
+                    autoFocus={isSelected && tool === "text"}
                     onUpdate={(updatedDoc) => {
                       const updatedItems = page.items.map((i) =>
                         i.id === item.id ? { ...i, doc: updatedDoc } : i,
@@ -1319,6 +1779,160 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
             }}
           />
         )}
+
+        {/* Render Active Lasso Path preview */}
+        {lassoPath && lassoPath.length > 1 && (
+          <svg
+            style={{
+              position: "absolute",
+              left: 0,
+              top: 0,
+              width: "100%",
+              height: "100%",
+              pointerEvents: "none",
+              zIndex: 998,
+              overflow: "visible",
+            }}
+          >
+            <polyline
+              points={lassoPath.map((p) => `${p.x},${p.y}`).join(" ")}
+              fill="rgba(0, 102, 204, 0.08)"
+              stroke={appleTheme.colors.accent}
+              strokeWidth={2}
+              strokeDasharray="5,5"
+            />
+          </svg>
+        )}
+
+        {/* Render Active Marquee Selection Box */}
+        {marqueeBox && (
+          <div
+            className="lasso-marquee-box"
+            style={{
+              position: "absolute",
+              left: Math.min(marqueeBox.startX, marqueeBox.currX),
+              top: Math.min(marqueeBox.startY, marqueeBox.currY),
+              width: Math.abs(marqueeBox.currX - marqueeBox.startX),
+              height: Math.abs(marqueeBox.currY - marqueeBox.startY),
+              border: `1.5px dashed ${appleTheme.colors.accent}`,
+              backgroundColor: "rgba(0, 102, 204, 0.08)",
+              pointerEvents: "none",
+              zIndex: 998,
+            }}
+          />
+        )}
+
+        {/* Composite Selection Bounding Box & Toolbar */}
+        {compositeBBox &&
+          (tool === "lasso" ||
+            tool === "select" ||
+            selectedStrokeIds.length > 0 ||
+            selectedItemIds.length > 0) && (
+            <div
+              className="lasso-composite-box"
+              style={{
+                position: "absolute",
+                left: compositeBBox.x,
+                top: compositeBBox.y,
+                width: compositeBBox.w,
+                height: compositeBBox.h,
+                border: `2px dashed ${appleTheme.colors.accent}`,
+                backgroundColor: "rgba(0, 102, 204, 0.04)",
+                borderRadius: appleTheme.radii.sm,
+                pointerEvents: "none",
+                zIndex: 60,
+              }}
+            >
+              {/* Floating selection actions pill */}
+              <div
+                style={{
+                  position: "absolute",
+                  top: -38,
+                  left: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "3px 10px",
+                  backgroundColor: appleTheme.colors.glassBg,
+                  backdropFilter: "blur(20px)",
+                  WebkitBackdropFilter: "blur(20px)",
+                  borderRadius: appleTheme.radii.pill,
+                  border: `1px solid ${appleTheme.colors.borderSubtle}`,
+                  boxShadow: appleTheme.shadows.card,
+                  fontFamily: appleTheme.fonts.sans,
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: appleTheme.colors.labelSecondary,
+                  pointerEvents: "auto",
+                }}
+              >
+                <div
+                  onPointerDown={startSelectionDrag}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    cursor: "grab",
+                    padding: "2px 4px",
+                  }}
+                  title="Drag to move all selected items & strokes"
+                >
+                  <GripHorizontal size={14} color={appleTheme.colors.accent} />
+                  <span>
+                    {selectedItemIds.length + selectedStrokeIds.length} Selected
+                  </span>
+                </div>
+                <div
+                  style={{
+                    width: 1,
+                    height: 14,
+                    backgroundColor: appleTheme.colors.borderMedium,
+                  }}
+                />
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteSelection();
+                  }}
+                  style={{
+                    border: "none",
+                    background: "none",
+                    cursor: "pointer",
+                    color: appleTheme.colors.destructive,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 3,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    padding: "2px 4px",
+                    borderRadius: appleTheme.radii.xs,
+                  }}
+                  title="Delete Selection (Delete / Backspace)"
+                >
+                  <Trash2 size={13} />
+                  <span>Delete</span>
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    clearSelection();
+                  }}
+                  style={{
+                    border: "none",
+                    background: "none",
+                    cursor: "pointer",
+                    color: appleTheme.colors.labelTertiary,
+                    display: "flex",
+                    alignItems: "center",
+                    padding: "2px 4px",
+                  }}
+                  title="Deselect (Escape)"
+                >
+                  <X size={13} />
+                </button>
+              </div>
+            </div>
+          )}
       </>
     );
 
@@ -1359,9 +1973,11 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
               ? "crosshair"
               : tool === "text"
                 ? "text"
-                : isPanningRef.current
-                  ? "grabbing"
-                  : "default",
+                : tool === "lasso"
+                  ? "crosshair"
+                  : isPanningRef.current
+                    ? "grabbing"
+                    : "default",
           userSelect: "none",
         }}
       >

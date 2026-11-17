@@ -26,6 +26,7 @@ export interface OutlineItemData {
 export interface OutlineEditorProps {
   container: Container;
   isSelected: boolean;
+  autoFocus?: boolean;
   onUpdate: (updatedDoc: PMDocNode) => void;
   onFocus?: () => void;
 }
@@ -33,6 +34,7 @@ export interface OutlineEditorProps {
 export const OutlineEditor: React.FC<OutlineEditorProps> = ({
   container,
   isSelected,
+  autoFocus = true,
   onUpdate,
   onFocus,
 }) => {
@@ -76,6 +78,20 @@ export const OutlineEditor: React.FC<OutlineEditorProps> = ({
 
     setItems(parsed);
   }, [container.doc, container.id]);
+
+  // Autofocus input when container becomes selected and autoFocus is enabled
+  useEffect(() => {
+    if (isSelected && autoFocus) {
+      const targetIndex = activeItemIndex >= 0 && activeItemIndex < items.length ? activeItemIndex : 0;
+      const el = inputRefs.current[targetIndex] || inputRefs.current[0];
+      if (el && document.activeElement !== el) {
+        const timer = setTimeout(() => {
+          el.focus();
+        }, 30);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [isSelected, autoFocus, items.length]);
 
   // Synchronize back to PMDocNode
   const syncToDoc = (newItems: OutlineItemData[]) => {
@@ -190,7 +206,14 @@ export const OutlineEditor: React.FC<OutlineEditorProps> = ({
   return (
     <div
       className="outline-container"
-      onClick={onFocus}
+      onClick={(e) => {
+        onFocus?.();
+        // If clicking container blank space, focus active or last input
+        if (e.target === e.currentTarget || (e.target as HTMLElement).tagName !== 'INPUT') {
+          const idx = activeItemIndex >= 0 && activeItemIndex < items.length ? activeItemIndex : Math.max(0, items.length - 1);
+          inputRefs.current[idx]?.focus();
+        }
+      }}
       style={{
         width: '100%',
         minHeight: '100%',

@@ -50,6 +50,10 @@ const AppContent: React.FC = () => {
   const [activeColor, setActiveColor] = useState<string>('#0066cc');
   const [activeWidth, setActiveWidth] = useState<number>(4);
 
+  useEffect(() => {
+    (window as any).__INKPAGE_ACTIVE_TOOL__ = activeTool;
+  }, [activeTool]);
+
   // Typography & Formatting
   const [fontFamily, setFontFamily] = useState<string>('SF Pro');
   const [fontSize, setFontSize] = useState<number>(14);
@@ -71,6 +75,15 @@ const AppContent: React.FC = () => {
 
   // View States
   const [isFullPageView, setIsFullPageView] = useState<boolean>(false);
+  const [canvasZoom, setCanvasZoom] = useState<number>(1.0);
+  const [canvasPan, setCanvasPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  const handleZoomIn = () => setCanvasZoom((z) => Math.min(3.0, z * 1.15));
+  const handleZoomOut = () => setCanvasZoom((z) => Math.max(0.25, z * 0.85));
+  const handleZoomReset = () => {
+    setCanvasZoom(1.0);
+    setCanvasPan({ x: 0, y: 0 });
+  };
 
   // Audio Recording State
   const [isRecordingAudio, setIsRecordingAudio] = useState<boolean>(false);
@@ -511,6 +524,28 @@ const AppContent: React.FC = () => {
       } else if (e.key === 'F11') {
         e.preventDefault();
         setIsFullPageView((prev) => !prev);
+      } else {
+        const activeEl = document.activeElement;
+        const isInput =
+          activeEl?.tagName === 'INPUT' ||
+          activeEl?.tagName === 'TEXTAREA' ||
+          (activeEl as HTMLElement)?.isContentEditable;
+
+        if (!isInput && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          if (e.key === 'v' || e.key === 'V') {
+            setActiveTool('select');
+          } else if (e.key === 't' || e.key === 'T') {
+            setActiveTool('text');
+          } else if (e.key === 'l' || e.key === 'L') {
+            setActiveTool('lasso');
+          } else if (e.key === 'p' || e.key === 'P') {
+            setActiveTool('pen');
+          } else if (e.key === 'e' || e.key === 'E') {
+            setActiveTool('eraser');
+          } else if (e.key === 'h' || e.key === 'H') {
+            setActiveTool('highlighter');
+          }
+        }
       }
     };
 
@@ -642,6 +677,224 @@ const AppContent: React.FC = () => {
     setSelectedItemId(newTable.id);
     setActiveTab('table');
   };
+
+  // Insert Text Box Handler
+  const handleInsertTextBox = useCallback(() => {
+    if (!activePage) return;
+    const x = Math.max(60, Math.round(-canvasPan.x / canvasZoom + 80));
+    const y = Math.max(60, Math.round(-canvasPan.y / canvasZoom + 100));
+    const newId = `container_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const newContainer: Container = {
+      id: newId,
+      kind: 'container',
+      x,
+      y,
+      w: 520,
+      h: 180,
+      z: (activePage.items.length || 0) + 1,
+      doc: {
+        type: 'doc',
+        content: [
+          {
+            type: 'outlineItem',
+            attrs: { indent: 0 },
+            content: [{ type: 'text', text: '' }],
+          },
+        ],
+      },
+    };
+    handleUpdatePage({
+      ...activePage,
+      items: [...activePage.items, newContainer],
+    });
+    setSelectedItemId(newId);
+    setActiveTool('text');
+  }, [activePage, canvasPan, canvasZoom, handleUpdatePage]);
+
+  // Indent & Outdent Outline Handlers
+  const handleIndent = useCallback(() => {
+    if (!activePage || !selectedItemId) return;
+    const updated = activePage.items.map((item) => {
+      if (item.id === selectedItemId && item.kind === 'container') {
+        const cont = item as Container;
+        const content = (cont.doc.content || []).map((node, i) => {
+          if (i === 0 && (node.attrs?.indent || 0) < 8) {
+            return { ...node, attrs: { ...node.attrs, indent: (node.attrs?.indent || 0) + 1 } };
+          }
+          return node;
+        });
+        return { ...cont, doc: { ...cont.doc, content } };
+      }
+      return item;
+    });
+    handleUpdatePage({ ...activePage, items: updated });
+  }, [activePage, selectedItemId, handleUpdatePage]);
+
+  const handleOutdent = useCallback(() => {
+    if (!activePage || !selectedItemId) return;
+    const updated = activePage.items.map((item) => {
+      if (item.id === selectedItemId && item.kind === 'container') {
+        const cont = item as Container;
+        const content = (cont.doc.content || []).map((node, i) => {
+          if (i === 0 && (node.attrs?.indent || 0) > 0) {
+            return { ...node, attrs: { ...node.attrs, indent: (node.attrs?.indent || 0) - 1 } };
+          }
+          return node;
+        });
+        return { ...cont, doc: { ...cont.doc, content } };
+      }
+      return item;
+    });
+    handleUpdatePage({ ...activePage, items: updated });
+  }, [activePage, selectedItemId, handleUpdatePage]);
+
+  const handleApplyHeading = useCallback((level: number) => {
+    if (level === 1) setFontSize(20);
+    else if (level === 2) setFontSize(16);
+    else setFontSize(14);
+    setIsBold(level > 0);
+  }, []);
+
+  // Table Tools Contextual Handlers
+  const handleTableInsertRowAbove = useCallback(() => {
+    if (!activePage || !selectedItemId) return;
+    const updated = activePage.items.map((item) => {
+      if (item.id === selectedItemId && item.kind === 'table') {
+        const tbl = item as TableItem;
+        const newRows = tbl.rows + 1;
+        const newCells: TableCell[] = [];
+        for (let c = 0; c < tbl.cols; c++) newCells.push({ row: 0, col: c, text: '' });
+        tbl.cells.forEach((cell) => newCells.push({ ...cell, row: cell.row + 1 }));
+        return { ...tbl, rows: newRows, cells: newCells, h: tbl.h + 36 };
+      }
+      return item;
+    });
+    handleUpdatePage({ ...activePage, items: updated });
+  }, [activePage, selectedItemId, handleUpdatePage]);
+
+  const handleTableInsertRowBelow = useCallback(() => {
+    if (!activePage || !selectedItemId) return;
+    const updated = activePage.items.map((item) => {
+      if (item.id === selectedItemId && item.kind === 'table') {
+        const tbl = item as TableItem;
+        const newRows = tbl.rows + 1;
+        const newCells: TableCell[] = [...tbl.cells];
+        for (let c = 0; c < tbl.cols; c++) newCells.push({ row: tbl.rows, col: c, text: '' });
+        return { ...tbl, rows: newRows, cells: newCells, h: tbl.h + 36 };
+      }
+      return item;
+    });
+    handleUpdatePage({ ...activePage, items: updated });
+  }, [activePage, selectedItemId, handleUpdatePage]);
+
+  const handleTableInsertColLeft = useCallback(() => {
+    if (!activePage || !selectedItemId) return;
+    const updated = activePage.items.map((item) => {
+      if (item.id === selectedItemId && item.kind === 'table') {
+        const tbl = item as TableItem;
+        const newCols = tbl.cols + 1;
+        const newCells: TableCell[] = [];
+        for (let r = 0; r < tbl.rows; r++) newCells.push({ row: r, col: 0, text: '' });
+        tbl.cells.forEach((cell) => newCells.push({ ...cell, col: cell.col + 1 }));
+        return { ...tbl, cols: newCols, cells: newCells, w: tbl.w + 100 };
+      }
+      return item;
+    });
+    handleUpdatePage({ ...activePage, items: updated });
+  }, [activePage, selectedItemId, handleUpdatePage]);
+
+  const handleTableInsertColRight = useCallback(() => {
+    if (!activePage || !selectedItemId) return;
+    const updated = activePage.items.map((item) => {
+      if (item.id === selectedItemId && item.kind === 'table') {
+        const tbl = item as TableItem;
+        const newCols = tbl.cols + 1;
+        const newCells: TableCell[] = [...tbl.cells];
+        for (let r = 0; r < tbl.rows; r++) newCells.push({ row: r, col: tbl.cols, text: '' });
+        return { ...tbl, cols: newCols, cells: newCells, w: tbl.w + 100 };
+      }
+      return item;
+    });
+    handleUpdatePage({ ...activePage, items: updated });
+  }, [activePage, selectedItemId, handleUpdatePage]);
+
+  const handleTableDeleteRow = useCallback(() => {
+    if (!activePage || !selectedItemId) return;
+    const updated = activePage.items.map((item) => {
+      if (item.id === selectedItemId && item.kind === 'table') {
+        const tbl = item as TableItem;
+        if (tbl.rows <= 1) return tbl;
+        const targetRow = tbl.rows - 1;
+        const newCells = tbl.cells.filter((c) => c.row !== targetRow);
+        return { ...tbl, rows: tbl.rows - 1, cells: newCells, h: Math.max(80, tbl.h - 36) };
+      }
+      return item;
+    });
+    handleUpdatePage({ ...activePage, items: updated });
+  }, [activePage, selectedItemId, handleUpdatePage]);
+
+  const handleTableDeleteCol = useCallback(() => {
+    if (!activePage || !selectedItemId) return;
+    const updated = activePage.items.map((item) => {
+      if (item.id === selectedItemId && item.kind === 'table') {
+        const tbl = item as TableItem;
+        if (tbl.cols <= 1) return tbl;
+        const targetCol = tbl.cols - 1;
+        const newCells = tbl.cells.filter((c) => c.col !== targetCol);
+        return { ...tbl, cols: tbl.cols - 1, cells: newCells, w: Math.max(160, tbl.w - 100) };
+      }
+      return item;
+    });
+    handleUpdatePage({ ...activePage, items: updated });
+  }, [activePage, selectedItemId, handleUpdatePage]);
+
+  const handleTableDeleteTable = useCallback(() => {
+    if (!activePage || !selectedItemId) return;
+    const remaining = activePage.items.filter((i) => i.id !== selectedItemId);
+    handleUpdatePage({ ...activePage, items: remaining });
+    setSelectedItemId(null);
+  }, [activePage, selectedItemId, handleUpdatePage]);
+
+  const handleTableCellShading = useCallback((color: string) => {
+    if (!activePage || !selectedItemId) return;
+    const updated = activePage.items.map((item) => {
+      if (item.id === selectedItemId && item.kind === 'table') {
+        const tbl = item as TableItem;
+        const newCells = tbl.cells.map((c) => ({ ...c, shading: color }));
+        return { ...tbl, cells: newCells };
+      }
+      return item;
+    });
+    handleUpdatePage({ ...activePage, items: updated });
+  }, [activePage, selectedItemId, handleUpdatePage]);
+
+  const handleTableSort = useCallback((ascending: boolean) => {
+    if (!activePage || !selectedItemId) return;
+    const updated = activePage.items.map((item) => {
+      if (item.id === selectedItemId && item.kind === 'table') {
+        const tbl = item as TableItem;
+        const rowMap = new Map<number, TableCell[]>();
+        tbl.cells.forEach((c) => {
+          if (!rowMap.has(c.row)) rowMap.set(c.row, []);
+          rowMap.get(c.row)!.push(c);
+        });
+        const dataRows: { row: number; text: string; cells: TableCell[] }[] = [];
+        for (let r = 1; r < tbl.rows; r++) {
+          const cells = rowMap.get(r) || [];
+          const col0 = cells.find((c) => c.col === 0)?.text || '';
+          dataRows.push({ row: r, text: col0, cells });
+        }
+        dataRows.sort((a, b) => (ascending ? a.text.localeCompare(b.text) : b.text.localeCompare(a.text)));
+        const newCells: TableCell[] = [...(rowMap.get(0) || [])];
+        dataRows.forEach((dr, newRowIdx) => {
+          dr.cells.forEach((c) => newCells.push({ ...c, row: newRowIdx + 1 }));
+        });
+        return { ...tbl, cells: newCells };
+      }
+      return item;
+    });
+    handleUpdatePage({ ...activePage, items: updated });
+  }, [activePage, selectedItemId, handleUpdatePage]);
 
   // Insert File & Image Handlers
   const handleInsertFile = () => fileInputRef.current?.click();
@@ -1117,8 +1370,14 @@ const AppContent: React.FC = () => {
           activeTab={activeTab}
           onSelectTab={(tab) => {
             setActiveTab(tab);
-            if (tab === 'draw' && activeTool === 'select') {
-              setActiveTool('pen');
+            if (tab === 'home' || tab === 'insert') {
+              if (activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'eraser') {
+                setActiveTool('select');
+              }
+            } else if (tab === 'draw') {
+              if (activeTool === 'select') {
+                setActiveTool('pen');
+              }
             }
           }}
           activeTool={activeTool}
@@ -1159,9 +1418,10 @@ const AppContent: React.FC = () => {
           }}
           textAlign={textAlign}
           onSelectTextAlign={setTextAlign}
-          onIndent={() => {}}
-          onOutdent={() => {}}
-          onApplyHeading={() => {}}
+          onInsertTextBox={handleInsertTextBox}
+          onIndent={handleIndent}
+          onOutdent={handleOutdent}
+          onApplyHeading={handleApplyHeading}
           onApplyTag={handleApplyTag}
           onInsertSpace={handleInsertSpace}
           onInsertTable={handleInsertTable}
@@ -1265,9 +1525,9 @@ const AppContent: React.FC = () => {
               });
             }
           }}
-          onZoomIn={() => {}}
-          onZoomOut={() => {}}
-          onZoomReset={() => {}}
+          onZoomIn={handleZoomIn}
+          onZoomOut={handleZoomOut}
+          onZoomReset={handleZoomReset}
           isSectionLocked={!!activeSection?.isLocked}
           onToggleSectionLock={handleToggleSectionLock}
           onOpenVersions={() => setShowVersionsModal(true)}
@@ -1276,6 +1536,16 @@ const AppContent: React.FC = () => {
           }}
           onOpenTagsSummary={() => setShowTags(true)}
           isTableActive={isTableActive}
+          onTableInsertRowAbove={handleTableInsertRowAbove}
+          onTableInsertRowBelow={handleTableInsertRowBelow}
+          onTableInsertColLeft={handleTableInsertColLeft}
+          onTableInsertColRight={handleTableInsertColRight}
+          onTableDeleteRow={handleTableDeleteRow}
+          onTableDeleteCol={handleTableDeleteCol}
+          onTableDeleteTable={handleTableDeleteTable}
+          onTableCellShading={handleTableCellShading}
+          onTableSortAscending={() => handleTableSort(true)}
+          onTableSortDescending={() => handleTableSort(false)}
           onUndo={handleUndo}
           onRedo={handleRedo}
         />
@@ -1396,6 +1666,11 @@ const AppContent: React.FC = () => {
               onRecordMetric={handleRecordMetric}
               selectedItemId={selectedItemId}
               onSelectItem={setSelectedItemId}
+              onSelectTool={setActiveTool}
+              zoom={canvasZoom}
+              onZoomChange={setCanvasZoom}
+              pan={canvasPan}
+              onPanChange={setCanvasPan}
             />
           ) : (
             <div
