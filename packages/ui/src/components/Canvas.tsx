@@ -155,6 +155,29 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
       };
     }, []);
 
+    const [viewportSize, setViewportSize] = useState({ w: 1920, h: 1080 });
+
+    useEffect(() => {
+      const updateSize = () => {
+        if (containerRef.current) {
+          const w = containerRef.current.clientWidth || window.innerWidth;
+          const h = containerRef.current.clientHeight || window.innerHeight;
+          setViewportSize({ w, h });
+        }
+      };
+      updateSize();
+      window.addEventListener("resize", updateSize);
+      let observer: ResizeObserver | null = null;
+      if (typeof ResizeObserver !== "undefined" && containerRef.current) {
+        observer = new ResizeObserver(updateSize);
+        observer.observe(containerRef.current);
+      }
+      return () => {
+        window.removeEventListener("resize", updateSize);
+        observer?.disconnect();
+      };
+    }, []);
+
     // Page background & dimensions
     const pageBgColor =
       !page.pageColor || page.pageColor === "#ffffff"
@@ -512,25 +535,28 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
       strokes: [],
     };
 
-    const handleUpdateStrokes = (strokes: any[]) => {
-      const existingIndex = page.items.findIndex((i) => i.kind === "ink");
-      const updatedGroup: InkGroup = {
-        ...currentInkGroup,
-        strokes,
-      };
+    const handleUpdateStrokes = useCallback(
+      (strokes: any[]) => {
+        const existingIndex = page.items.findIndex((i) => i.kind === "ink");
+        const updatedGroup: InkGroup = {
+          ...currentInkGroup,
+          strokes,
+        };
 
-      let newItems = [...page.items];
-      if (existingIndex >= 0) {
-        newItems[existingIndex] = updatedGroup;
-      } else {
-        newItems.push(updatedGroup);
-      }
+        let newItems = [...page.items];
+        if (existingIndex >= 0) {
+          newItems[existingIndex] = updatedGroup;
+        } else {
+          newItems.push(updatedGroup);
+        }
 
-      onUpdatePage({
-        ...page,
-        items: newItems,
-      });
-    };
+        onUpdatePage({
+          ...page,
+          items: newItems,
+        });
+      },
+      [page, currentInkGroup, onUpdatePage],
+    );
 
     const deleteItem = useCallback(
       (itemId: string) => {
@@ -655,7 +681,7 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
       setSelectedItemId(newContainer.id);
     };
 
-    const renderCanvasContent = (canvasW?: number, canvasH?: number) => (
+    const renderCanvasContent = () => (
       <>
         {/* Render Canvas Items */}
         {page.items.map((item) => {
@@ -1278,27 +1304,6 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
           );
         })}
 
-        {/* Vector Ink Canvas Layer (zIndex: 20 renders ON TOP of shapes) */}
-        <InkCanvas
-          inkGroup={currentInkGroup}
-          tool={
-            isSpaceDown || selectedShape
-              ? "select"
-              : tool === "pen" || tool === "highlighter" || tool === "eraser"
-                ? tool
-                : "select"
-          }
-          color={activeColor}
-          width={activeWidth}
-          zoom={zoom}
-          pan={pan}
-          canvasWidth={canvasW}
-          canvasHeight={canvasH}
-          onUpdateStrokes={handleUpdateStrokes}
-          onErasePoint={handleErasePoint}
-          onRecordMetric={onRecordMetric}
-        />
-
         {/* Render Active Shape Preview when drawing */}
         {drawingShape && selectedShape && (
           <div
@@ -1401,10 +1406,39 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
                     : `${page.background?.spacing || 24}px ${page.background?.spacing || 24}px`,
               }}
             >
-              {renderCanvasContent(sheetW, sheetH)}
+              {renderCanvasContent()}
             </div>
           )}
         </div>
+
+        {/* Vector Ink Layer (Viewport-sized, Hardware-accelerated, Infinite-canvas) */}
+        <InkCanvas
+          inkGroup={currentInkGroup}
+          tool={
+            isSpaceDown || selectedShape
+              ? "select"
+              : tool === "pen" || tool === "highlighter" || tool === "eraser"
+                ? tool
+                : "select"
+          }
+          color={activeColor}
+          width={activeWidth}
+          zoom={zoom}
+          pan={pan}
+          offset={
+            paperPreset !== "auto" ? { x: sheetX, y: sheetY } : { x: 0, y: 0 }
+          }
+          viewportWidth={viewportSize.w}
+          viewportHeight={viewportSize.h}
+          clipRect={
+            paperPreset === "auto"
+              ? null
+              : { x: 0, y: 0, w: sheetW, h: sheetH }
+          }
+          onUpdateStrokes={handleUpdateStrokes}
+          onErasePoint={handleErasePoint}
+          onRecordMetric={onRecordMetric}
+        />
 
         {/* On-screen Virtual Ruler */}
         <VirtualRuler

@@ -9,8 +9,12 @@ export interface InkCanvasProps {
   width: number;
   zoom: number;
   pan: { x: number; y: number };
+  offset?: { x: number; y: number };
+  viewportWidth?: number;
+  viewportHeight?: number;
   canvasWidth?: number;
   canvasHeight?: number;
+  clipRect?: { x: number; y: number; w: number; h: number } | null;
   onUpdateStrokes: (strokes: Stroke[]) => void;
   onErasePoint?: (x: number, y: number) => void;
   onRecordMetric?: (
@@ -27,15 +31,20 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
   color,
   width,
   zoom,
+  pan,
+  offset,
+  viewportWidth,
+  viewportHeight,
   canvasWidth: propCanvasWidth,
   canvasHeight: propCanvasHeight,
+  clipRect,
   onUpdateStrokes,
   onErasePoint,
   onRecordMetric,
 }) => {
-  // Double-buffering canvases:
-  // 1. completedCanvasRef: Renders all saved strokes (only redrawn on stroke changes)
-  // 2. activeCanvasRef: Renders ONLY the current in-progress stroke during pointermove (0 React state updates)
+  // Double-buffering canvases sized strictly to viewport:
+  // 1. completedCanvasRef: Renders all saved strokes transformed by pan & zoom
+  // 2. activeCanvasRef: Renders ONLY the current in-progress stroke with 0 React state updates
   const completedCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const activeCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -48,9 +57,16 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
     maxY: number;
   } | null>(null);
   const lastPenTimeRef = useRef<number>(0);
+  const capturedPointerIdRef = useRef<number | null>(null);
   const strokeBBoxesRef = useRef<Map<string, [number, number, number, number]>>(
     new Map(),
   );
+
+  const canvasWidth = viewportWidth || propCanvasWidth || 1920;
+  const canvasHeight = viewportHeight || propCanvasHeight || 1080;
+
+  const originX = pan.x + (offset?.x || 0) * zoom;
+  const originY = pan.y + (offset?.y || 0) * zoom;
 
   const isPointerContact = (e: React.PointerEvent | PointerEvent): boolean => {
     if (e.pointerType === "touch") return true;
@@ -86,60 +102,59 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
     return bbox;
   };
 
-  let dynamicMaxW = 8000;
-  let dynamicMaxH = 8000;
-  if (!propCanvasWidth && inkGroup.strokes) {
-    for (let i = 0; i < inkGroup.strokes.length; i++) {
-      const s = inkGroup.strokes[i];
-      if (s.pts) {
-        for (let j = 0; j < s.pts.length; j++) {
-          if (s.pts[j][0] > dynamicMaxW - 600)
-            dynamicMaxW = Math.ceil(s.pts[j][0] + 2000);
-          if (s.pts[j][1] > dynamicMaxH - 600)
-            dynamicMaxH = Math.ceil(s.pts[j][1] + 2000);
-        }
-      }
-    }
-  }
-
-  const canvasWidth = propCanvasWidth || dynamicMaxW;
-  const canvasHeight = propCanvasHeight || dynamicMaxH;
-
   const inkGroupRef = useRef(inkGroup);
   inkGroupRef.current = inkGroup;
   const onUpdateStrokesRef = useRef(onUpdateStrokes);
   onUpdateStrokesRef.current = onUpdateStrokes;
   const lastRenderedStrokesRef = useRef<Stroke[] | null>(null);
 
-  // Redraw all completed strokes onto the background canvas
+  // Redraw all completed strokes transformed into viewport space with frustum culling
   const redrawCompletedStrokes = useCallback(() => {
     const canvas = completedCanvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    for (let i = 0; i < inkGroup.strokes.length; i++) {
-      renderStrokeToCanvas(ctx, inkGroup.strokes[i]);
-    }
-  }, [inkGroup.strokes]);
+    ctx.setTransform(zoom, 0, 0, zoom, originX, originY);
 
-  const lastCanvasDimRef = useRef<{ w: number; h: number }>({ w: 0, h: 0 });
+    if (clipRect) {
+      ctx.beginPath();
+      ctx.rect(clipRect.x, clipRect.y, clipRect.w, clipRect.h);
+      ctx.clip();
+    }
+
+    const strokes = inkGroupRef.current.strokes || [];
+    const margin = 100;
+    const viewMinX = -originX / zoom - margin;
+    const viewMaxX = (canvas.width - originX) / zoom + margin;
+    const viewMinY = -originY / zoom - margin;
+    const viewMaxY = (canvas.height - originY) / zoom + margin;
+
+    for (let i = 0; i < strokes.length; i++) {
+      const stroke = strokes[i];
+      if (!stroke.pts || stroke.pts.length === 0) continue;
+      const bbox = getStrokeBBox(stroke);
+      // Viewport frustum culling: skip offscreen strokes
+      if (
+        bbox[2] < viewMinX ||
+        bbox[0] > viewMaxX ||
+        bbox[3] < viewMinY ||
+        bbox[1] > viewMaxY
+      ) {
+        continue;
+      }
+      renderStrokeToCanvas(ctx, stroke);
+    }
+    ctx.restore();
+  }, [zoom, originX, originY, clipRect]);
+
   useEffect(() => {
-    const dimChanged =
-      lastCanvasDimRef.current.w !== canvasWidth ||
-      lastCanvasDimRef.current.h !== canvasHeight;
-    lastCanvasDimRef.current = { w: canvasWidth, h: canvasHeight };
-
-    // If the canvas was already rendered for this exact strokes array reference and size didn't change,
-    // skip the redundant clearRect and full redraw to keep drawing ultra-fast and lag-free!
-    if (!dimChanged && lastRenderedStrokesRef.current === inkGroup.strokes) {
-      return;
-    }
-
     if (strokeBBoxesRef.current.size > 1000) {
-      const activeIds = new Set(inkGroup.strokes.map((s) => s.id));
+      const activeIds = new Set((inkGroup.strokes || []).map((s) => s.id));
       for (const key of Array.from(strokeBBoxesRef.current.keys())) {
         if (!activeIds.has(key)) {
           strokeBBoxesRef.current.delete(key);
@@ -152,12 +167,21 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
 
   // Safely stop active stroke and commit finished stroke to page data
   const commitActiveStroke = useCallback(() => {
+    // Release pointer capture immediately to prevent input traps
+    if (capturedPointerIdRef.current !== null && activeCanvasRef.current) {
+      try {
+        if (activeCanvasRef.current.hasPointerCapture(capturedPointerIdRef.current)) {
+          activeCanvasRef.current.releasePointerCapture(capturedPointerIdRef.current);
+        }
+      } catch {}
+      capturedPointerIdRef.current = null;
+    }
+
     if (!isDrawingRef.current) return;
     isDrawingRef.current = false;
 
     const finishedStroke = activeStrokeRef.current;
     activeStrokeRef.current = null;
-    const dirty = activeDirtyRectRef.current;
     activeDirtyRectRef.current = null;
 
     // Render finished stroke to completed canvas and commit to page data
@@ -166,7 +190,15 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
       if (compCanvas) {
         const compCtx = compCanvas.getContext("2d");
         if (compCtx) {
+          compCtx.save();
+          compCtx.setTransform(zoom, 0, 0, zoom, originX, originY);
+          if (clipRect) {
+            compCtx.beginPath();
+            compCtx.rect(clipRect.x, clipRect.y, clipRect.w, clipRect.h);
+            compCtx.clip();
+          }
           renderStrokeToCanvas(compCtx, finishedStroke);
+          compCtx.restore();
         }
       }
 
@@ -185,25 +217,13 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
     if (activeCanvas) {
       const actCtx = activeCanvas.getContext("2d");
       if (actCtx) {
-        if (dirty) {
-          const margin = Math.max((finishedStroke?.width || 4) * 2, 60);
-          const cx = Math.max(0, Math.floor(dirty.minX - margin));
-          const cy = Math.max(0, Math.floor(dirty.minY - margin));
-          const cw = Math.min(
-            activeCanvas.width - cx,
-            Math.ceil(dirty.maxX - dirty.minX + margin * 2),
-          );
-          const ch = Math.min(
-            activeCanvas.height - cy,
-            Math.ceil(dirty.maxY - dirty.minY + margin * 2),
-          );
-          actCtx.clearRect(cx, cy, cw, ch);
-        } else {
-          actCtx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
-        }
+        actCtx.save();
+        actCtx.setTransform(1, 0, 0, 1, 0, 0);
+        actCtx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
+        actCtx.restore();
       }
     }
-  }, []);
+  }, [zoom, originX, originY, clipRect]);
 
   // Pointer Down: Start active stroke
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -239,15 +259,29 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
     try {
       if (e.pointerId !== undefined && e.currentTarget.setPointerCapture) {
         e.currentTarget.setPointerCapture(e.pointerId);
+        capturedPointerIdRef.current = e.pointerId;
       }
     } catch {}
 
     isDrawingRef.current = true;
 
     const rect = e.currentTarget.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / zoom;
-    const y = (e.clientY - rect.top) / zoom;
+    const x = (e.clientX - rect.left - originX) / zoom;
+    const y = (e.clientY - rect.top - originY) / zoom;
     const pressure = e.pressure > 0 ? e.pressure : 0.5;
+
+    // If fixed paper preset is active, verify contact is inside paper sheet
+    if (clipRect) {
+      if (
+        x < clipRect.x ||
+        x > clipRect.x + clipRect.w ||
+        y < clipRect.y ||
+        y > clipRect.y + clipRect.h
+      ) {
+        commitActiveStroke();
+        return;
+      }
+    }
 
     if (tool === "eraser") {
       eraseStrokeAt(x, y);
@@ -272,8 +306,17 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
     if (activeCanvas) {
       const actCtx = activeCanvas.getContext("2d");
       if (actCtx) {
+        actCtx.save();
+        actCtx.setTransform(1, 0, 0, 1, 0, 0);
         actCtx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
+        actCtx.setTransform(zoom, 0, 0, zoom, originX, originY);
+        if (clipRect) {
+          actCtx.beginPath();
+          actCtx.rect(clipRect.x, clipRect.y, clipRect.w, clipRect.h);
+          actCtx.clip();
+        }
         renderStrokeToCanvas(actCtx, newStroke);
+        actCtx.restore();
       }
     }
 
@@ -308,8 +351,8 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
     const rect = e.currentTarget.getBoundingClientRect();
 
     if (tool === "eraser") {
-      const x = (e.clientX - rect.left) / zoom;
-      const y = (e.clientY - rect.top) / zoom;
+      const x = (e.clientX - rect.left - originX) / zoom;
+      const y = (e.clientY - rect.top - originY) / zoom;
       eraseStrokeAt(x, y);
       return;
     }
@@ -328,8 +371,8 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
 
     for (let i = 0; i < rawEvents.length; i++) {
       const ev = rawEvents[i];
-      const px = (ev.clientX - rect.left) / zoom;
-      const py = (ev.clientY - rect.top) / zoom;
+      const px = (ev.clientX - rect.left - originX) / zoom;
+      const py = (ev.clientY - rect.top - originY) / zoom;
       const pressure = ev.pressure > 0 ? ev.pressure : 0.5;
       newPoints.push([px, py, pressure, ev.tiltX || 0, ev.timeStamp || now]);
 
@@ -348,24 +391,40 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
     if (activeCanvas) {
       const actCtx = activeCanvas.getContext("2d");
       if (actCtx) {
-        // High-performance dirty rect clearing: clear only the active stroke bounding box with padding
+        actCtx.save();
         if (dirty) {
-          const margin = Math.max(activeStrokeRef.current.width * 2, 40);
-          const cx = Math.max(0, Math.floor(dirty.minX - margin));
-          const cy = Math.max(0, Math.floor(dirty.minY - margin));
+          const margin = Math.max((activeStrokeRef.current?.width || 4) * 2, 50);
+          const screenMinX = (dirty.minX - margin) * zoom + originX;
+          const screenMinY = (dirty.minY - margin) * zoom + originY;
+          const screenMaxX = (dirty.maxX + margin) * zoom + originX;
+          const screenMaxY = (dirty.maxY + margin) * zoom + originY;
+
+          const cx = Math.max(0, Math.floor(screenMinX));
+          const cy = Math.max(0, Math.floor(screenMinY));
           const cw = Math.min(
             activeCanvas.width - cx,
-            Math.ceil(dirty.maxX - dirty.minX + margin * 2),
+            Math.ceil(screenMaxX - screenMinX),
           );
           const ch = Math.min(
             activeCanvas.height - cy,
-            Math.ceil(dirty.maxY - dirty.minY + margin * 2),
+            Math.ceil(screenMaxY - screenMinY),
           );
+
+          actCtx.setTransform(1, 0, 0, 1, 0, 0);
           actCtx.clearRect(cx, cy, cw, ch);
         } else {
+          actCtx.setTransform(1, 0, 0, 1, 0, 0);
           actCtx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
         }
+
+        actCtx.setTransform(zoom, 0, 0, zoom, originX, originY);
+        if (clipRect) {
+          actCtx.beginPath();
+          actCtx.rect(clipRect.x, clipRect.y, clipRect.w, clipRect.h);
+          actCtx.clip();
+        }
         renderStrokeToCanvas(actCtx, activeStrokeRef.current);
+        actCtx.restore();
       }
     }
 
@@ -391,6 +450,7 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
         e.currentTarget.releasePointerCapture(e.pointerId);
       }
     } catch {}
+    capturedPointerIdRef.current = null;
 
     commitActiveStroke();
   };
@@ -400,19 +460,26 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
     commitActiveStroke();
   }, [tool, commitActiveStroke]);
 
-  // Window-level safety cleanup: if pointerup/cancel/blur fires globally, finalize any stroke
+  // Window-level safety cleanup: if pointerup/cancel/blur/escape fires globally, finalize any stroke
   useEffect(() => {
     const handleGlobalPointerUp = () => {
       commitActiveStroke();
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" || e.code === "Escape") {
+        commitActiveStroke();
+      }
     };
 
     window.addEventListener("pointerup", handleGlobalPointerUp);
     window.addEventListener("pointercancel", handleGlobalPointerUp);
     window.addEventListener("blur", handleGlobalPointerUp);
+    window.addEventListener("keydown", handleKeyDown);
     return () => {
       window.removeEventListener("pointerup", handleGlobalPointerUp);
       window.removeEventListener("pointercancel", handleGlobalPointerUp);
       window.removeEventListener("blur", handleGlobalPointerUp);
+      window.removeEventListener("keydown", handleKeyDown);
     };
   }, [commitActiveStroke]);
 
@@ -452,18 +519,7 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
       };
       lastRenderedStrokesRef.current = remaining;
       onUpdateStrokesRef.current(remaining);
-
-      // Instantly redraw completed canvas without waiting for async React re-render
-      const canvas = completedCanvasRef.current;
-      if (canvas) {
-        const ctx = canvas.getContext("2d");
-        if (ctx) {
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          for (let i = 0; i < remaining.length; i++) {
-            renderStrokeToCanvas(ctx, remaining[i]);
-          }
-        }
-      }
+      redrawCompletedStrokes();
     }
   };
 
@@ -471,10 +527,10 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
     <div
       style={{
         position: "absolute",
-        left: inkGroup.x || 0,
-        top: inkGroup.y || 0,
-        width: canvasWidth,
-        height: canvasHeight,
+        left: 0,
+        top: 0,
+        width: "100%",
+        height: "100%",
         zIndex: 20,
         pointerEvents:
           tool === "pen" || tool === "highlighter" || tool === "eraser"

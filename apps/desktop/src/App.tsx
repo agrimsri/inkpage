@@ -305,9 +305,13 @@ const AppContent: React.FC = () => {
 
   const selectPage = (p: Page) => {
     flushPendingSave();
-    setActivePage(p);
+    const safePage: Page = {
+      ...p,
+      history: (p.history || []).filter((h) => !h.snapshot || h.snapshot.length < 200000).slice(-10),
+    };
+    setActivePage(safePage);
     setSelectedItemId(null);
-    historyRef.current = [p];
+    historyRef.current = [safePage];
     historyIdxRef.current = 0;
     lastUndoPushTimeRef.current = 0;
   };
@@ -316,11 +320,16 @@ const AppContent: React.FC = () => {
     (updatedPage: Page) => {
       const now = new Date().toISOString();
       const lastSnap = lastSnapshotTimeRef.current;
-      let newHistory = updatedPage.history || [];
+      // Sanitize history: strip legacy recursive/bloated snapshots (>200KB) and keep max 10
+      const safeHistory = (updatedPage.history || [])
+        .filter((h) => !h.snapshot || h.snapshot.length < 200000)
+        .slice(-9);
 
-      // Only create a revision snapshot if at least 30s have elapsed or if history is empty
+      let newHistory = safeHistory;
+
+      // Only create a revision snapshot if at least 60s have elapsed or if history is empty
       // CRITICAL: Strip history from cleanPage to prevent exponential recursive JSON stringification!
-      if (!lastSnap || Date.now() - lastSnap > 30000 || newHistory.length === 0) {
+      if (!lastSnap || Date.now() - lastSnap > 60000 || safeHistory.length === 0) {
         lastSnapshotTimeRef.current = Date.now();
         const { history: _discard, ...cleanPage } = updatedPage;
         const revision: PageRevision = {
@@ -328,7 +337,7 @@ const AppContent: React.FC = () => {
           author: 'Current User',
           snapshot: JSON.stringify(cleanPage),
         };
-        newHistory = [...newHistory.slice(-19), revision];
+        newHistory = [...safeHistory, revision];
       }
 
       const pageWithHistory: Page = {
@@ -352,7 +361,7 @@ const AppContent: React.FC = () => {
       } else {
         const newUndo = historyRef.current.slice(0, historyIdxRef.current + 1);
         newUndo.push(pageWithHistory);
-        if (newUndo.length > 50) newUndo.shift();
+        if (newUndo.length > 30) newUndo.shift();
         historyRef.current = newUndo;
         historyIdxRef.current = newUndo.length - 1;
       }
@@ -371,7 +380,7 @@ const AppContent: React.FC = () => {
         saveTimeoutRef.current = setTimeout(() => {
           saveTimeoutRef.current = null;
           flushPendingSave();
-        }, 400);
+        }, 500);
       }
     },
     [activeNotebook, activeSection, flushPendingSave]
