@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { ImportReport } from '@inkpage/format';
 import { Upload, FileCode, CheckCircle2, AlertTriangle, X, ArrowRight } from 'lucide-react';
+import { appleTheme, appleStyles } from '../theme';
 
 export interface ImportWizardProps {
   onClose: () => void;
@@ -53,29 +54,14 @@ export const ImportWizard: React.FC<ImportWizardProps> = ({
   };
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 1000,
-      }}
-    >
+    <div style={appleStyles.modalBackdrop}>
       <div
         style={{
-          backgroundColor: '#ffffff',
-          borderRadius: 10,
-          width: 520,
+          ...appleStyles.modalCard,
+          width: 540,
           maxHeight: '85vh',
-          display: 'flex',
-          flexDirection: 'column',
-          boxShadow: '0 20px 40px rgba(0,0,0,0.2)',
+          fontFamily: appleTheme.fonts.sans,
+          padding: 0,
           overflow: 'hidden',
         }}
       >
@@ -86,37 +72,62 @@ export const ImportWizard: React.FC<ImportWizardProps> = ({
             alignItems: 'center',
             justifyContent: 'space-between',
             padding: '16px 20px',
-            borderBottom: '1px solid #e2e8f0',
+            borderBottom: `1px solid ${appleTheme.colors.borderSubtle}`,
+            backgroundColor: appleTheme.colors.bgSidebar,
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, fontSize: 16 }}>
-            <Upload size={20} color="#3b82f6" />
-            Import OneNote Notebook
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontWeight: 600, fontSize: 16, color: appleTheme.colors.labelPrimary }}>
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: '50%',
+                backgroundColor: appleTheme.colors.accentTint,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Upload size={16} color={appleTheme.colors.accent} />
+            </div>
+            <span>Import OneNote Notebook</span>
           </div>
           <button
             onClick={onClose}
-            style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8' }}
+            style={{
+              border: 'none',
+              background: 'none',
+              cursor: 'pointer',
+              color: appleTheme.colors.labelTertiary,
+              width: 28,
+              height: 28,
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: appleTheme.transitions.fast,
+            }}
           >
             <X size={18} />
           </button>
         </div>
 
         {/* Content */}
-        <div style={{ padding: 20, overflowY: 'auto' }}>
+        <div style={{ padding: 22, overflowY: 'auto' }}>
           {!report ? (
             <div>
-              <p style={{ fontSize: 13, color: '#475569', lineHeight: 1.5, marginTop: 0 }}>
-                Import your existing notebooks from Microsoft OneNote. Supported inputs:
+              <p style={{ fontSize: 13, color: appleTheme.colors.labelSecondary, lineHeight: 1.5, marginTop: 0 }}>
+                Import notes from Microsoft OneNote into Inkpage. Supported formats:
               </p>
-              <ul style={{ fontSize: 12, color: '#64748b', paddingLeft: 20, margin: '8px 0 16px 0' }}>
-                <li><b>.onepkg</b> (Cabinet packages from OneNote Desktop)</li>
-                <li><b>.one</b> (Individual Section files)</li>
-                <li><b>.onetoc2</b> (Notebook Table of Contents folders)</li>
-                <li><b>.zip</b> (Notebook folders exported from OneDrive Web)</li>
-              </ul>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '8px 0 18px 0' }}>
+                <span style={appleStyles.badge('default')}>.onepkg (Cabinet package)</span>
+                <span style={appleStyles.badge('default')}>.one (Section file)</span>
+                <span style={appleStyles.badge('default')}>.onetoc2 (Notebook folder)</span>
+                <span style={appleStyles.badge('default')}>.zip (OneDrive export)</span>
+              </div>
 
               <div style={{ marginBottom: 14 }}>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: appleTheme.colors.labelSecondary, marginBottom: 6 }}>
                   File or Directory Path:
                 </label>
                 <input
@@ -124,47 +135,50 @@ export const ImportWizard: React.FC<ImportWizardProps> = ({
                   placeholder="/home/user/Documents/MyNotebook.onepkg or .onetoc2"
                   value={filePath}
                   onChange={(e) => setFilePath(e.target.value)}
-                  style={inputStyle}
+                  style={{ ...appleStyles.inputField, width: '100%' }}
                 />
               </div>
 
               <div style={{ marginBottom: 20 }}>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: appleTheme.colors.labelSecondary, marginBottom: 6 }}>
                   Notebook Name Override (optional):
                 </label>
                 <input
                   placeholder="Leave blank to use original name"
                   value={titleOverride}
                   onChange={(e) => setTitleOverride(e.target.value)}
-                  style={inputStyle}
+                  style={{ ...appleStyles.inputField, width: '100%' }}
                 />
               </div>
 
               {errorMsg && (
                 <div
                   style={{
-                    padding: '10px 12px',
-                    borderRadius: 6,
-                    backgroundColor: '#fef2f2',
-                    border: '1px solid #fecaca',
-                    color: '#b91c1c',
+                    padding: '10px 14px',
+                    borderRadius: appleTheme.radii.md,
+                    backgroundColor: appleTheme.colors.destructiveTint,
+                    border: `1px solid ${appleTheme.colors.destructiveTintHover}`,
+                    color: appleTheme.colors.destructive,
                     fontSize: 12,
                     marginBottom: 16,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
                   }}
                 >
-                  <AlertTriangle size={15} style={{ verticalAlign: 'middle', marginRight: 6 }} />
-                  {errorMsg}
+                  <AlertTriangle size={15} style={{ flexShrink: 0 }} />
+                  <span>{errorMsg}</span>
                 </div>
               )}
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-                <button onClick={onClose} style={cancelBtnStyle}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <button onClick={onClose} style={appleStyles.secondaryButton()}>
                   Cancel
                 </button>
                 <button
                   disabled={!filePath.trim() || isImporting}
                   onClick={handleStartImport}
-                  style={isImporting || !filePath.trim() ? disabledBtnStyle : primaryBtnStyle}
+                  style={appleStyles.primaryButton(!filePath.trim() || isImporting)}
                 >
                   {isImporting ? 'Importing Notebook...' : 'Start Import'}
                 </button>
@@ -178,10 +192,10 @@ export const ImportWizard: React.FC<ImportWizardProps> = ({
                   display: 'flex',
                   alignItems: 'center',
                   gap: 8,
-                  color: '#16a34a',
+                  color: appleTheme.colors.success,
                   fontWeight: 600,
                   fontSize: 15,
-                  marginBottom: 12,
+                  marginBottom: 16,
                 }}
               >
                 <CheckCircle2 size={20} />
@@ -206,19 +220,20 @@ export const ImportWizard: React.FC<ImportWizardProps> = ({
 
               {report.warnings && report.warnings.length > 0 && (
                 <div style={{ marginBottom: 16 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: '#b45309', marginBottom: 4 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: appleTheme.colors.warning, marginBottom: 4 }}>
                     Warnings ({report.warnings.length}):
                   </div>
                   <div
                     style={{
                       maxHeight: 100,
                       overflowY: 'auto',
-                      backgroundColor: '#fffbeb',
-                      border: '1px solid #fef3c7',
-                      borderRadius: 6,
-                      padding: 8,
+                      backgroundColor: appleTheme.colors.warningTint,
+                      border: `1px solid ${appleTheme.colors.borderSubtle}`,
+                      borderRadius: appleTheme.radii.sm,
+                      padding: 10,
                       fontSize: 11,
-                      color: '#92400e',
+                      color: appleTheme.colors.warning,
+                      lineHeight: 1.4,
                     }}
                   >
                     {report.warnings.map((w, i) => (
@@ -228,8 +243,8 @@ export const ImportWizard: React.FC<ImportWizardProps> = ({
                 </div>
               )}
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-                <button onClick={onClose} style={cancelBtnStyle}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <button onClick={onClose} style={appleStyles.secondaryButton()}>
                   Close
                 </button>
                 {importedNotebookId && (
@@ -238,9 +253,9 @@ export const ImportWizard: React.FC<ImportWizardProps> = ({
                       onImportComplete(importedNotebookId);
                       onClose();
                     }}
-                    style={primaryBtnStyle}
+                    style={appleStyles.primaryButton()}
                   >
-                    Open Notebook <ArrowRight size={14} style={{ marginLeft: 4 }} />
+                    Open Notebook <ArrowRight size={14} />
                   </button>
                 )}
               </div>
@@ -255,52 +270,16 @@ export const ImportWizard: React.FC<ImportWizardProps> = ({
 const MetricBox = ({ label, value }: { label: string; value: any }) => (
   <div
     style={{
-      padding: '8px 12px',
-      backgroundColor: '#f8fafc',
-      borderRadius: 6,
-      border: '1px solid #e2e8f0',
+      padding: '10px 12px',
+      backgroundColor: appleTheme.colors.bgSubtle,
+      borderRadius: appleTheme.radii.md,
+      border: `1px solid ${appleTheme.colors.borderSubtle}`,
       textAlign: 'center',
     }}
   >
-    <div style={{ fontSize: 11, color: '#64748b' }}>{label}</div>
-    <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', marginTop: 2 }}>{value}</div>
+    <div style={{ fontSize: 11, color: appleTheme.colors.labelSecondary }}>{label}</div>
+    <div style={{ fontSize: 16, fontWeight: 600, color: appleTheme.colors.labelPrimary, marginTop: 2, fontVariantNumeric: 'tabular-nums' }}>
+      {value}
+    </div>
   </div>
 );
-
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '8px 12px',
-  borderRadius: 6,
-  border: '1px solid #cbd5e1',
-  fontSize: 13,
-  outline: 'none',
-  boxSizing: 'border-box',
-};
-
-const cancelBtnStyle: React.CSSProperties = {
-  padding: '8px 14px',
-  borderRadius: 6,
-  border: '1px solid #cbd5e1',
-  background: '#ffffff',
-  fontSize: 13,
-  cursor: 'pointer',
-};
-
-const primaryBtnStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  padding: '8px 16px',
-  borderRadius: 6,
-  border: 'none',
-  background: '#3b82f6',
-  color: '#ffffff',
-  fontSize: 13,
-  fontWeight: 600,
-  cursor: 'pointer',
-};
-
-const disabledBtnStyle: React.CSSProperties = {
-  ...primaryBtnStyle,
-  background: '#94a3b8',
-  cursor: 'not-allowed',
-};

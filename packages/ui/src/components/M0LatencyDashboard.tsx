@@ -1,5 +1,6 @@
 import React from 'react';
 import { Activity, X, CheckCircle, AlertCircle } from 'lucide-react';
+import { appleTheme, appleStyles } from '../theme';
 
 export interface MetricSample {
   latency: number;
@@ -32,48 +33,55 @@ export const M0LatencyDashboard: React.FC<M0LatencyDashboardProps> = ({
   const passesGate = count >= 10 ? p95 <= 25.0 : null;
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 1000,
-      }}
-    >
+    <div style={appleStyles.modalBackdrop}>
       <div
         style={{
-          backgroundColor: '#ffffff',
-          borderRadius: 10,
-          width: 560,
-          padding: 24,
-          boxShadow: '0 20px 40px rgba(0,0,0,0.2)',
-          display: 'flex',
-          flexDirection: 'column',
+          ...appleStyles.modalCard,
+          width: 580,
+          fontFamily: appleTheme.fonts.sans,
           gap: 16,
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: 16 }}>
-            <Activity color="#3b82f6" />
-            M0 De-risking Spike: Stylus & Pointer Event Monitor
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontWeight: 600, fontSize: 16, color: appleTheme.colors.labelPrimary }}>
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: '50%',
+                backgroundColor: appleTheme.colors.accentTint,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Activity size={16} color={appleTheme.colors.accent} />
+            </div>
+            <span>Stylus Latency & Pointer Monitor (SPEC §12)</span>
           </div>
           <button
             onClick={onClose}
-            style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8' }}
+            style={{
+              border: 'none',
+              background: 'none',
+              cursor: 'pointer',
+              color: appleTheme.colors.labelTertiary,
+              width: 28,
+              height: 28,
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: appleTheme.transitions.fast,
+            }}
           >
             <X size={18} />
           </button>
         </div>
 
-        <p style={{ fontSize: 12, color: '#475569', margin: 0, lineHeight: 1.5 }}>
+        <p style={{ fontSize: 13, color: appleTheme.colors.labelSecondary, margin: 0, lineHeight: 1.5 }}>
           Measures real-time hardware stylus latency (pen-down to render delta via PointerEvents API),
-          pressure sensitivity, and coalesced event batches per SPEC §12 M0. Target acceptance: ≤ 25 ms p95 latency.
+          pressure sensitivity, and coalesced event batches. Target acceptance: ≤ 25 ms p95 latency.
         </p>
 
         {/* Metrics Grid */}
@@ -83,21 +91,21 @@ export const M0LatencyDashboard: React.FC<M0LatencyDashboardProps> = ({
           <StatBox
             label="p95 Latency"
             value={`${p95.toFixed(1)} ms`}
-            highlight={p95 > 25 ? '#ef4444' : '#16a34a'}
+            highlight={p95 > 25 ? appleTheme.colors.destructive : appleTheme.colors.success}
           />
           <StatBox label="Max Latency" value={`${max.toFixed(1)} ms`} />
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
-          <div style={{ padding: 12, backgroundColor: '#f8fafc', borderRadius: 6, border: '1px solid #e2e8f0' }}>
-            <div style={{ fontSize: 11, color: '#64748b' }}>Stylus Pen Events</div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a', marginTop: 2 }}>
+          <div style={{ padding: '12px 14px', backgroundColor: appleTheme.colors.bgSubtle, borderRadius: appleTheme.radii.md, border: `1px solid ${appleTheme.colors.borderSubtle}` }}>
+            <div style={{ fontSize: 11, color: appleTheme.colors.labelSecondary }}>Stylus Pen Events</div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: appleTheme.colors.labelPrimary, marginTop: 2, fontVariantNumeric: 'tabular-nums' }}>
               {penCount} / {count} ({count > 0 ? Math.round((penCount / count) * 100) : 0}%)
             </div>
           </div>
-          <div style={{ padding: 12, backgroundColor: '#f8fafc', borderRadius: 6, border: '1px solid #e2e8f0' }}>
-            <div style={{ fontSize: 11, color: '#64748b' }}>Avg Coalesced Events/Frame</div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a', marginTop: 2 }}>
+          <div style={{ padding: '12px 14px', backgroundColor: appleTheme.colors.bgSubtle, borderRadius: appleTheme.radii.md, border: `1px solid ${appleTheme.colors.borderSubtle}` }}>
+            <div style={{ fontSize: 11, color: appleTheme.colors.labelSecondary }}>Avg Coalesced Events/Frame</div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: appleTheme.colors.labelPrimary, marginTop: 2, fontVariantNumeric: 'tabular-nums' }}>
               {avgCoalesced} events
             </div>
           </div>
@@ -106,73 +114,51 @@ export const M0LatencyDashboard: React.FC<M0LatencyDashboardProps> = ({
         {/* Gate Status */}
         <div
           style={{
-            padding: 12,
-            borderRadius: 6,
+            padding: '12px 14px',
+            borderRadius: appleTheme.radii.md,
             display: 'flex',
             alignItems: 'center',
-            gap: 10,
+            gap: 12,
             backgroundColor:
               passesGate === true
-                ? '#f0fdf4'
+                ? appleTheme.colors.successTint
                 : passesGate === false
-                ? '#fef2f2'
-                : '#f8fafc',
+                ? appleTheme.colors.destructiveTint
+                : appleTheme.colors.bgSubtle,
             border:
               passesGate === true
-                ? '1px solid #bbf7d0'
+                ? `1px solid ${appleTheme.colors.borderSubtle}`
                 : passesGate === false
-                ? '1px solid #fecaca'
-                : '1px solid #e2e8f0',
+                ? `1px solid ${appleTheme.colors.destructiveTintHover}`
+                : `1px solid ${appleTheme.colors.borderSubtle}`,
           }}
         >
           {passesGate === true ? (
-            <CheckCircle color="#16a34a" size={20} />
+            <CheckCircle color={appleTheme.colors.success} size={22} style={{ flexShrink: 0 }} />
           ) : passesGate === false ? (
-            <AlertCircle color="#dc2626" size={20} />
+            <AlertCircle color={appleTheme.colors.destructive} size={22} style={{ flexShrink: 0 }} />
           ) : (
-            <Activity color="#94a3b8" size={20} />
+            <Activity color={appleTheme.colors.labelTertiary} size={22} style={{ flexShrink: 0 }} />
           )}
           <div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: appleTheme.colors.labelPrimary }}>
               {passesGate === true
                 ? 'M0 Latency Acceptance Gate: PASSED'
                 : passesGate === false
                 ? 'M0 Latency Acceptance Gate: FAILED (p95 > 25ms)'
                 : 'M0 Latency Status: Draw with Pen to measure'}
             </div>
-            <div style={{ fontSize: 11, color: '#64748b' }}>
-              Measured p95: {p95.toFixed(1)} ms (Threshold: ≤ 25 ms)
+            <div style={{ fontSize: 11, color: appleTheme.colors.labelSecondary, marginTop: 2 }}>
+              Measured p95: {p95.toFixed(1)} ms (SPEC Threshold: ≤ 25 ms)
             </div>
           </div>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-          <button
-            onClick={onClear}
-            style={{
-              padding: '6px 12px',
-              borderRadius: 6,
-              border: '1px solid #cbd5e1',
-              background: '#ffffff',
-              fontSize: 12,
-              cursor: 'pointer',
-            }}
-          >
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
+          <button onClick={onClear} style={appleStyles.secondaryButton()}>
             Clear Samples
           </button>
-          <button
-            onClick={onClose}
-            style={{
-              padding: '6px 16px',
-              borderRadius: 6,
-              border: 'none',
-              background: '#3b82f6',
-              color: '#ffffff',
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: 'pointer',
-            }}
-          >
+          <button onClick={onClose} style={appleStyles.primaryButton()}>
             Done
           </button>
         </div>
@@ -192,20 +178,21 @@ const StatBox = ({
 }) => (
   <div
     style={{
-      padding: '10px 12px',
-      backgroundColor: '#f8fafc',
-      borderRadius: 6,
-      border: '1px solid #e2e8f0',
+      padding: '12px 14px',
+      backgroundColor: appleTheme.colors.bgSubtle,
+      borderRadius: appleTheme.radii.md,
+      border: `1px solid ${appleTheme.colors.borderSubtle}`,
       textAlign: 'center',
     }}
   >
-    <div style={{ fontSize: 11, color: '#64748b' }}>{label}</div>
+    <div style={{ fontSize: 11, color: appleTheme.colors.labelSecondary }}>{label}</div>
     <div
       style={{
         fontSize: 16,
-        fontWeight: 700,
-        color: highlight || '#0f172a',
+        fontWeight: 600,
+        color: highlight || appleTheme.colors.labelPrimary,
         marginTop: 2,
+        fontVariantNumeric: 'tabular-nums',
       }}
     >
       {value}

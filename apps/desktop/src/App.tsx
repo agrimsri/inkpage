@@ -27,6 +27,8 @@ import {
   PageVersionsModal,
   ToolType,
   MetricSample,
+  appleTheme,
+  appleStyles,
 } from '@inkpage/ui';
 import { Lock, Unlock } from 'lucide-react';
 
@@ -43,11 +45,11 @@ export const App: React.FC = () => {
   // Ribbon Navigation & Tools
   const [activeTab, setActiveTab] = useState<RibbonTab>('home');
   const [activeTool, setActiveTool] = useState<ToolType>('select');
-  const [activeColor, setActiveColor] = useState<string>('#2563eb');
+  const [activeColor, setActiveColor] = useState<string>(appleTheme.colors.accent);
   const [activeWidth, setActiveWidth] = useState<number>(4);
 
   // Typography & Formatting
-  const [fontFamily, setFontFamily] = useState<string>('Segoe UI');
+  const [fontFamily, setFontFamily] = useState<string>('SF Pro');
   const [fontSize, setFontSize] = useState<number>(14);
   const [isBold, setIsBold] = useState<boolean>(false);
   const [isItalic, setIsItalic] = useState<boolean>(false);
@@ -56,7 +58,7 @@ export const App: React.FC = () => {
   const [isSubscript, setIsSubscript] = useState<boolean>(false);
   const [isSuperscript, setIsSuperscript] = useState<boolean>(false);
   const [highlightColor, setHighlightColor] = useState<string>('transparent');
-  const [fontColor, setFontColor] = useState<string>('#0f172a');
+  const [fontColor, setFontColor] = useState<string>(appleTheme.colors.labelPrimary);
   const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>('left');
 
   // Drawing & Shapes
@@ -166,7 +168,7 @@ export const App: React.FC = () => {
     const demoSection: Section = {
       id: 'demo-sec-1',
       title: 'Quick Notes',
-      color: '#6366f1',
+      color: appleTheme.colors.accent,
       pageOrder: ['demo-page-1'],
     };
     const demoPage: Page = {
@@ -178,7 +180,7 @@ export const App: React.FC = () => {
       modified: '2026-11-12T10:00:00Z',
       size: { w: 'auto', h: 'auto', preset: 'auto' },
       pageColor: '#ffffff',
-      background: { kind: 'rule', spacing: 28, color: '#e2e8f0' },
+      background: { kind: 'rule', spacing: 28, color: appleTheme.colors.borderMedium },
       items: [
         {
           id: 'container-1',
@@ -231,7 +233,7 @@ export const App: React.FC = () => {
             {
               id: 'stroke-1',
               tool: 'pen',
-              color: '#2563eb',
+              color: appleTheme.colors.accent,
               width: 4,
               pts: [
                 [100, 380, 0.5],
@@ -435,7 +437,7 @@ export const App: React.FC = () => {
       modified: new Date().toISOString(),
       size: { w: 'auto', h: 'auto', preset: 'auto' },
       pageColor: '#ffffff',
-      background: { kind: 'rule', spacing: 28, color: '#e2e8f0' },
+      background: { kind: 'rule', spacing: 28, color: appleTheme.colors.borderMedium },
       items: [],
     };
 
@@ -485,7 +487,7 @@ export const App: React.FC = () => {
         handleCreatePage();
       } else if ((e.ctrlKey || e.metaKey) && e.key === 'N' && e.shiftKey) {
         e.preventDefault();
-        handleCreateSection('New Section', '#6366f1');
+        handleCreateSection('New Section', appleTheme.colors.accent);
       } else if ((e.ctrlKey || e.metaKey) && (e.key === 'e' || e.key === 'f')) {
         e.preventDefault();
         setShowSearch(true);
@@ -1134,7 +1136,7 @@ export const App: React.FC = () => {
             setIsItalic(false);
             setIsUnderline(false);
             setFontSize(14);
-            setFontColor('#0f172a');
+            setFontColor(appleTheme.colors.labelPrimary);
           }}
           textAlign={textAlign}
           onSelectTextAlign={setTextAlign}
@@ -1223,7 +1225,7 @@ export const App: React.FC = () => {
                 background: {
                   kind,
                   spacing,
-                  color: kind === 'rule' ? '#e2e8f0' : '#cbd5e1',
+                  color: appleTheme.colors.borderMedium,
                 },
               });
             }
@@ -1256,7 +1258,7 @@ export const App: React.FC = () => {
           onRedo={handleRedo}
         />
 
-        {/* Page Title & Status Header */}
+        {/* Page Title & Status Header (macOS Page Header) */}
         {activePage && (
           <div
             style={{
@@ -1264,11 +1266,12 @@ export const App: React.FC = () => {
               alignItems: 'center',
               justifyContent: 'space-between',
               padding: '8px 24px',
-              backgroundColor: '#ffffff',
-              borderBottom: '1px solid #e2e8f0',
+              backgroundColor: appleTheme.colors.bgCanvas,
+              borderBottom: `1px solid ${appleTheme.colors.borderSubtle}`,
+              fontFamily: appleTheme.fonts.sans,
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, flex: 1 }}>
               <input
                 value={activePage.title}
                 onChange={(e) =>
@@ -1279,16 +1282,18 @@ export const App: React.FC = () => {
                 }
                 placeholder="Untitled Page"
                 style={{
-                  fontSize: 20,
-                  fontWeight: 700,
-                  color: '#0f172a',
+                  fontSize: 22,
+                  fontWeight: 600,
+                  letterSpacing: '-0.02em',
+                  color: appleTheme.colors.labelPrimary,
                   border: 'none',
                   outline: 'none',
                   background: 'transparent',
+                  fontFamily: appleTheme.fonts.sans,
                   width: '60%',
                 }}
               />
-              <span style={{ fontSize: 11, color: '#94a3b8' }}>
+              <span style={{ fontSize: 12, color: appleTheme.colors.labelTertiary, fontVariantNumeric: 'tabular-nums' }}>
                 Created: {new Date(activePage.created).toLocaleDateString()}
               </span>
             </div>
@@ -1300,17 +1305,32 @@ export const App: React.FC = () => {
                   setShowSpikeDashboard(true);
                 }}
                 style={{
-                  padding: '4px 8px',
-                  borderRadius: 4,
-                  border: '1px solid #cbd5e1',
-                  backgroundColor: '#f8fafc',
-                  color: '#475569',
-                  fontSize: 11,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  height: 28,
+                  padding: '0 12px',
+                  borderRadius: appleTheme.radii.pill,
+                  border: `1px solid ${appleTheme.colors.borderSubtle}`,
+                  backgroundColor: appleTheme.colors.bgSubtle,
+                  color: appleTheme.colors.labelSecondary,
+                  fontSize: 12,
                   fontWeight: 600,
                   cursor: 'pointer',
+                  transition: appleTheme.transitions.fast,
                 }}
+                title="View Stylus Latency & Hardware Monitor"
               >
-                M0 Latency Gate (≤25ms)
+                <span
+                  style={{
+                    width: 7,
+                    height: 7,
+                    borderRadius: '50%',
+                    backgroundColor: appleTheme.colors.success,
+                    display: 'inline-block',
+                  }}
+                />
+                <span>M0 Latency Gate (≤25ms)</span>
               </button>
             </div>
           </div>
@@ -1326,8 +1346,9 @@ export const App: React.FC = () => {
                 height: '100%',
                 alignItems: 'center',
                 justifyContent: 'center',
-                backgroundColor: '#f8fafc',
+                backgroundColor: appleTheme.colors.bgWindow,
                 gap: 16,
+                fontFamily: appleTheme.fonts.sans,
               }}
             >
               <div
@@ -1335,32 +1356,31 @@ export const App: React.FC = () => {
                   width: 64,
                   height: 64,
                   borderRadius: '50%',
-                  backgroundColor: '#fee2e2',
+                  backgroundColor: appleTheme.colors.destructiveTint,
+                  border: `1px solid ${appleTheme.colors.destructiveTintHover}`,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
+                  boxShadow: '0 8px 24px rgba(215, 0, 21, 0.15)',
                 }}
               >
-                <Lock size={32} color="#dc2626" />
+                <Lock size={30} color={appleTheme.colors.destructive} />
               </div>
-              <h2 style={{ fontSize: 20, fontWeight: 700, color: '#1e293b', margin: 0 }}>
+              <h2 style={{ fontSize: 20, fontWeight: 600, color: appleTheme.colors.labelPrimary, margin: 0, letterSpacing: '-0.015em' }}>
                 This section is password-protected.
               </h2>
-              <p style={{ fontSize: 13, color: '#64748b', margin: 0 }}>
+              <p style={{ fontSize: 13, color: appleTheme.colors.labelSecondary, margin: 0, maxWidth: 360, textAlign: 'center', lineHeight: 1.5 }}>
                 Click Unlock below or press Enter to enter your password and access notes.
               </p>
               <button
                 onClick={() => setShowPasswordModal(true)}
                 style={{
-                  padding: '8px 20px',
-                  backgroundColor: '#3b82f6',
-                  color: '#ffffff',
-                  border: 'none',
-                  borderRadius: 6,
+                  ...appleStyles.primaryButton(),
+                  height: 36,
+                  padding: '0 22px',
+                  borderRadius: appleTheme.radii.pill,
+                  fontSize: 14,
                   fontWeight: 600,
-                  fontSize: 13,
-                  cursor: 'pointer',
-                  boxShadow: '0 4px 12px rgba(59, 130, 246, 0.25)',
                 }}
               >
                 Unlock Section
@@ -1388,8 +1408,9 @@ export const App: React.FC = () => {
                 height: '100%',
                 alignItems: 'center',
                 justifyContent: 'center',
-                color: '#94a3b8',
+                color: appleTheme.colors.labelTertiary,
                 fontSize: 14,
+                fontFamily: appleTheme.fonts.sans,
               }}
             >
               No page selected. Create a new page with Ctrl+N.

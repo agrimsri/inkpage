@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import type { AudioItem } from '@inkpage/format';
 import { Play, Pause, Volume2, Mic, Trash2 } from 'lucide-react';
+import { appleTheme, appleStyles } from '../theme';
 
 export interface AudioPlayerWidgetProps {
   item: AudioItem;
@@ -37,16 +38,20 @@ export const AudioPlayerWidget: React.FC<AudioPlayerWidgetProps> = ({
   return (
     <div
       style={{
-        padding: '10px 14px',
-        backgroundColor: '#f8fafc',
-        borderRadius: 8,
-        border: isSelected ? '1px solid #3b82f6' : '1px solid #cbd5e1',
-        boxShadow: isSelected ? '0 4px 16px rgba(59, 130, 246, 0.1)' : '0 1px 3px rgba(0,0,0,0.05)',
+        padding: '12px 16px',
+        backgroundColor: appleTheme.colors.glassBg,
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
+        borderRadius: appleTheme.radii.lg,
+        border: isSelected ? `1.5px solid ${appleTheme.colors.accent}` : `1px solid ${appleTheme.colors.borderSubtle}`,
+        boxShadow: isSelected ? appleTheme.shadows.card : appleTheme.shadows.subtle,
         display: 'flex',
         alignItems: 'center',
         gap: 12,
-        width: 340,
+        width: 360,
         userSelect: 'none',
+        fontFamily: appleTheme.fonts.sans,
+        transition: appleTheme.transitions.fast,
       }}
     >
       {item.audioUrl && (
@@ -58,30 +63,42 @@ export const AudioPlayerWidget: React.FC<AudioPlayerWidgetProps> = ({
         />
       )}
 
-      {/* Play/Pause Button */}
+      {/* Play/Pause Button (Apple Blue Circle) */}
       <button
         onClick={togglePlay}
         style={{
           width: 36,
           height: 36,
           borderRadius: '50%',
-          backgroundColor: '#3b82f6',
+          backgroundColor: appleTheme.colors.accent,
           border: 'none',
           color: '#ffffff',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           cursor: 'pointer',
+          boxShadow: appleTheme.shadows.control,
+          transition: appleTheme.transitions.fast,
+          flexShrink: 0,
         }}
       >
-        {isPlaying ? <Pause size={16} /> : <Play size={16} style={{ marginLeft: 2 }} />}
+        {isPlaying ? <Pause size={15} /> : <Play size={15} style={{ marginLeft: 2 }} />}
       </button>
 
       {/* Info & Progress */}
-      <div style={{ flex: 1 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Mic size={13} color="#dc2626" />
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>
+          <Mic size={13} color={appleTheme.colors.destructive} />
+          <span
+            style={{
+              fontSize: 13,
+              fontWeight: 600,
+              color: appleTheme.colors.labelPrimary,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
             {item.filename || 'Audio Recording'}
           </span>
         </div>
@@ -96,9 +113,9 @@ export const AudioPlayerWidget: React.FC<AudioPlayerWidgetProps> = ({
               setCurrentTime(val);
               if (audioRef.current) audioRef.current.currentTime = val;
             }}
-            style={{ flex: 1, accentColor: '#3b82f6', height: 4 }}
+            style={{ flex: 1, accentColor: appleTheme.colors.accent, height: 4, cursor: 'pointer' }}
           />
-          <span style={{ fontSize: 11, color: '#64748b', fontVariantNumeric: 'tabular-nums' }}>
+          <span style={{ fontSize: 11, color: appleTheme.colors.labelSecondary, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
             {formatTime(currentTime)} / {formatTime(item.duration || 0)}
           </span>
         </div>
@@ -107,7 +124,20 @@ export const AudioPlayerWidget: React.FC<AudioPlayerWidgetProps> = ({
       {isSelected && (
         <button
           onClick={onDelete}
-          style={{ border: 'none', background: 'none', color: '#94a3b8', cursor: 'pointer' }}
+          style={{
+            border: 'none',
+            background: 'none',
+            color: appleTheme.colors.labelTertiary,
+            cursor: 'pointer',
+            padding: 4,
+            borderRadius: appleTheme.radii.xs,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: appleTheme.transitions.fast,
+          }}
+          onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = appleTheme.colors.destructive)}
+          onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = appleTheme.colors.labelTertiary)}
           title="Delete Recording"
         >
           <Trash2 size={15} />

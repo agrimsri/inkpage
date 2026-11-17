@@ -13,6 +13,7 @@ import {
   Activity,
   Layers,
 } from 'lucide-react';
+import { appleTheme, appleStyles } from '../theme';
 
 export type ToolType = 'select' | 'text' | 'pen' | 'highlighter' | 'eraser' | 'lasso';
 
@@ -31,7 +32,7 @@ export interface ToolPaletteProps {
   onToggleSpikeModal?: () => void;
 }
 
-const PEN_COLORS = ['#0f172a', '#2563eb', '#dc2626', '#16a34a', '#9333ea'];
+const PEN_COLORS = ['#1d1d1f', '#0071e3', '#d70015', '#1a7f37', '#8944ab'];
 const HIGHLIGHTER_COLORS = ['#fef08a', '#bbf7d0', '#bae6fd', '#fbcfe8'];
 const PEN_WIDTHS = [2, 4, 8];
 
@@ -54,155 +55,178 @@ export const ToolPalette: React.FC<ToolPaletteProps> = ({
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 6,
+        gap: 8,
         padding: '6px 14px',
-        backgroundColor: '#ffffff',
-        borderBottom: '1px solid #e2e8f0',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+        backgroundColor: appleTheme.colors.bgCanvas,
+        borderBottom: `1px solid ${appleTheme.colors.borderSubtle}`,
+        boxShadow: appleTheme.shadows.subtle,
+        fontFamily: appleTheme.fonts.sans,
       }}
     >
       {/* Undo / Redo */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 2, marginRight: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 2, marginRight: 6 }}>
         <button
           onClick={onUndo}
           title="Undo (Ctrl+Z)"
           style={buttonStyle(false)}
         >
-          <Undo2 size={16} />
+          <Undo2 size={15} />
         </button>
         <button
           onClick={onRedo}
           title="Redo (Ctrl+Y)"
           style={buttonStyle(false)}
         >
-          <Redo2 size={16} />
+          <Redo2 size={15} />
         </button>
       </div>
 
-      <div style={{ width: 1, height: 20, backgroundColor: '#e2e8f0', marginRight: 8 }} />
+      <div style={{ width: 1, height: 20, backgroundColor: appleTheme.colors.borderSubtle, marginRight: 4 }} />
 
-      {/* Main Tools */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+      {/* Main Tools (Apple Segmented Track) */}
+      <div style={appleStyles.segmentedControlTrack}>
         <button
           onClick={() => onSelectTool('select')}
           title="Select / Move (V)"
-          style={buttonStyle(activeTool === 'select')}
+          style={appleStyles.segmentedControlItem(activeTool === 'select')}
         >
-          <MousePointer size={16} />
-          <span style={{ fontSize: 13, fontWeight: 500 }}>Select</span>
+          <MousePointer size={14} style={{ marginRight: 4 }} />
+          <span>Select</span>
         </button>
 
         <button
           onClick={() => onSelectTool('text')}
           title="Text Outline Container (T)"
-          style={buttonStyle(activeTool === 'text')}
+          style={appleStyles.segmentedControlItem(activeTool === 'text')}
         >
-          <Type size={16} />
-          <span style={{ fontSize: 13, fontWeight: 500 }}>Text</span>
+          <Type size={14} style={{ marginRight: 4 }} />
+          <span>Type</span>
         </button>
 
         <button
-          onClick={() => {
-            onSelectTool('pen');
-            if (!PEN_COLORS.includes(activeColor)) onSelectColor('#2563eb');
-          }}
-          title="Stylus Pen (P)"
-          style={buttonStyle(activeTool === 'pen')}
+          onClick={() => onSelectTool('pen')}
+          title="Pressure-sensitive Inking Pen (P)"
+          style={appleStyles.segmentedControlItem(activeTool === 'pen')}
         >
-          <Pen size={16} />
-          <span style={{ fontSize: 13, fontWeight: 500 }}>Pen</span>
+          <Pen size={14} style={{ marginRight: 4 }} />
+          <span>Pen</span>
         </button>
 
         <button
-          onClick={() => {
-            onSelectTool('highlighter');
-            if (!HIGHLIGHTER_COLORS.includes(activeColor)) onSelectColor('#fef08a');
-          }}
-          title="Highlighter (H)"
-          style={buttonStyle(activeTool === 'highlighter')}
+          onClick={() => onSelectTool('highlighter')}
+          title="Translucent Inking Highlighter (H)"
+          style={appleStyles.segmentedControlItem(activeTool === 'highlighter')}
         >
-          <Highlighter size={16} />
-          <span style={{ fontSize: 13, fontWeight: 500 }}>Highlighter</span>
+          <Highlighter size={14} style={{ marginRight: 4 }} />
+          <span>Highlight</span>
         </button>
 
         <button
           onClick={() => onSelectTool('eraser')}
           title="Stroke Eraser (E)"
-          style={buttonStyle(activeTool === 'eraser')}
+          style={appleStyles.segmentedControlItem(activeTool === 'eraser')}
         >
-          <Eraser size={16} />
-          <span style={{ fontSize: 13, fontWeight: 500 }}>Eraser</span>
+          <Eraser size={14} style={{ marginRight: 4 }} />
+          <span>Eraser</span>
         </button>
       </div>
 
-      {/* Color and Width Presets when Pen/Highlighter Active */}
-      {(activeTool === 'pen' || activeTool === 'highlighter') && (
-        <>
-          <div style={{ width: 1, height: 20, backgroundColor: '#e2e8f0', margin: '0 8px' }} />
+      <div style={{ width: 1, height: 20, backgroundColor: appleTheme.colors.borderSubtle, margin: '0 4px' }} />
 
-          {/* Color swatches */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            {(activeTool === 'pen' ? PEN_COLORS : HIGHLIGHTER_COLORS).map((c) => (
-              <button
-                key={c}
-                onClick={() => onSelectColor(c)}
-                style={{
-                  width: 20,
-                  height: 20,
-                  borderRadius: '50%',
-                  backgroundColor: c,
-                  border: activeColor === c ? '2px solid #3b82f6' : '1px solid #cbd5e1',
-                  cursor: 'pointer',
-                  transform: activeColor === c ? 'scale(1.15)' : 'none',
-                  transition: 'transform 0.1s',
-                }}
-              />
-            ))}
-          </div>
-
-          {/* Width presets */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 8 }}>
-            {PEN_WIDTHS.map((w) => (
-              <button
-                key={w}
-                onClick={() => onSelectWidth(w)}
-                style={{
-                  width: 24,
-                  height: 24,
-                  borderRadius: 4,
-                  border: activeWidth === w ? '2px solid #3b82f6' : '1px solid #e2e8f0',
-                  background: activeWidth === w ? '#eff6ff' : '#ffffff',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <div
-                  style={{
-                    width: w * 2,
-                    height: w * 2,
-                    borderRadius: '50%',
-                    backgroundColor: activeColor,
-                  }}
-                />
-              </button>
-            ))}
-          </div>
-        </>
+      {/* Pen Color Swatches */}
+      {(activeTool === 'pen' || activeTool === 'select') && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {PEN_COLORS.map((c) => (
+            <button
+              key={c}
+              onClick={() => onSelectColor(c)}
+              title={c}
+              style={{
+                width: 18,
+                height: 18,
+                borderRadius: '50%',
+                backgroundColor: c,
+                border: activeColor === c ? '2.5px solid #ffffff' : '1px solid transparent',
+                boxShadow: activeColor === c ? `0 0 0 2px ${c}` : 'none',
+                cursor: 'pointer',
+                padding: 0,
+                transition: appleTheme.transitions.fast,
+              }}
+            />
+          ))}
+        </div>
       )}
 
-      <div style={{ width: 1, height: 20, backgroundColor: '#e2e8f0', margin: '0 8px' }} />
+      {/* Highlighter Color Swatches */}
+      {activeTool === 'highlighter' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {HIGHLIGHTER_COLORS.map((c) => (
+            <button
+              key={c}
+              onClick={() => onSelectColor(c)}
+              title={c}
+              style={{
+                width: 18,
+                height: 18,
+                borderRadius: '50%',
+                backgroundColor: c,
+                border: activeColor === c ? '2.5px solid #ffffff' : `1px solid ${appleTheme.colors.borderMedium}`,
+                boxShadow: activeColor === c ? `0 0 0 2px ${appleTheme.colors.accent}` : 'none',
+                cursor: 'pointer',
+                padding: 0,
+                transition: appleTheme.transitions.fast,
+              }}
+            />
+          ))}
+        </div>
+      )}
 
-      {/* Insertables: Table, Image, File */}
+      {/* Pen Stroke Widths */}
+      {(activeTool === 'pen' || activeTool === 'highlighter') && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 4 }}>
+          {PEN_WIDTHS.map((w) => (
+            <button
+              key={w}
+              onClick={() => onSelectWidth(w)}
+              style={{
+                width: 24,
+                height: 24,
+                borderRadius: appleTheme.radii.xs,
+                border: activeWidth === w ? `1.5px solid ${appleTheme.colors.accent}` : `1px solid ${appleTheme.colors.borderSubtle}`,
+                backgroundColor: activeWidth === w ? appleTheme.colors.accentTint : appleTheme.colors.bgCard,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                padding: 0,
+                transition: appleTheme.transitions.fast,
+              }}
+              title={`${w}px width`}
+            >
+              <div
+                style={{
+                  width: Math.min(16, w * 2.5),
+                  height: Math.min(16, w * 2.5),
+                  borderRadius: '50%',
+                  backgroundColor: appleTheme.colors.labelPrimary,
+                }}
+              />
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div style={{ width: 1, height: 20, backgroundColor: appleTheme.colors.borderSubtle, margin: '0 4px' }} />
+
+      {/* Inserts */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         <button
           onClick={onAddTable}
           title="Insert Table"
           style={buttonStyle(false)}
         >
-          <TableIcon size={16} />
-          <span style={{ fontSize: 13, fontWeight: 500 }}>Table</span>
+          <TableIcon size={14} />
+          <span>Table</span>
         </button>
 
         <button
@@ -210,8 +234,8 @@ export const ToolPalette: React.FC<ToolPaletteProps> = ({
           title="Insert Image"
           style={buttonStyle(false)}
         >
-          <ImageIcon size={16} />
-          <span style={{ fontSize: 13, fontWeight: 500 }}>Image</span>
+          <ImageIcon size={14} />
+          <span>Image</span>
         </button>
 
         <button
@@ -219,8 +243,8 @@ export const ToolPalette: React.FC<ToolPaletteProps> = ({
           title="Attach File"
           style={buttonStyle(false)}
         >
-          <Paperclip size={16} />
-          <span style={{ fontSize: 13, fontWeight: 500 }}>File</span>
+          <Paperclip size={14} />
+          <span>File</span>
         </button>
       </div>
 
@@ -230,23 +254,11 @@ export const ToolPalette: React.FC<ToolPaletteProps> = ({
       {onToggleSpikeModal && (
         <button
           onClick={onToggleSpikeModal}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            padding: '5px 10px',
-            backgroundColor: '#eff6ff',
-            border: '1px solid #bfdbfe',
-            borderRadius: 6,
-            color: '#1d4ed8',
-            cursor: 'pointer',
-            fontSize: 12,
-            fontWeight: 600,
-          }}
+          style={appleStyles.secondaryButton(false, 'sm')}
           title="View M0 Pointer Latency & Stylus Metrics"
         >
-          <Activity size={15} />
-          M0 Ink Latency Spike
+          <Activity size={14} color={appleTheme.colors.accent} />
+          <span>M0 Latency Monitor</span>
         </button>
       )}
     </div>
@@ -254,14 +266,19 @@ export const ToolPalette: React.FC<ToolPaletteProps> = ({
 };
 
 const buttonStyle = (isActive: boolean): React.CSSProperties => ({
-  display: 'flex',
+  display: 'inline-flex',
   alignItems: 'center',
-  gap: 6,
-  padding: '6px 10px',
-  borderRadius: 6,
-  border: isActive ? '1px solid #bfdbfe' : '1px solid transparent',
-  backgroundColor: isActive ? '#eff6ff' : 'transparent',
-  color: isActive ? '#1d4ed8' : '#334155',
+  gap: 5,
+  height: 28,
+  padding: '0 8px',
+  borderRadius: appleTheme.radii.sm,
+  border: isActive ? `1.5px solid ${appleTheme.colors.accentTintHover}` : '1px solid transparent',
+  backgroundColor: isActive ? appleTheme.colors.accentTint : 'transparent',
+  color: isActive ? appleTheme.colors.accent : appleTheme.colors.labelPrimary,
   cursor: 'pointer',
-  transition: 'background-color 0.1s, color 0.1s',
+  fontSize: 12,
+  fontWeight: isActive ? 600 : 500,
+  transition: appleTheme.transitions.fast,
+  whiteSpace: 'nowrap',
+  flexShrink: 0,
 });

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Lock, Unlock, Key, X, AlertTriangle } from 'lucide-react';
+import { appleTheme, appleStyles } from '../theme';
 
 export interface PasswordModalProps {
   isLocked: boolean;
@@ -49,48 +50,70 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
   };
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 1000,
-      }}
-    >
-      <div
-        style={{
-          backgroundColor: '#ffffff',
-          borderRadius: 10,
-          width: 380,
-          padding: 24,
-          boxShadow: '0 20px 40px rgba(0,0,0,0.2)',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: 16 }}>
-            {isLocked ? <Lock color="#dc2626" /> : <Key color="#3b82f6" />}
+    <div style={appleStyles.modalBackdrop}>
+      <div style={{ ...appleStyles.modalCard, width: 400, fontFamily: appleTheme.fonts.sans }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, fontSize: 16, color: appleTheme.colors.labelPrimary }}>
+            {isLocked ? (
+              <div
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: '50%',
+                  backgroundColor: appleTheme.colors.destructiveTint,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Lock size={16} color={appleTheme.colors.destructive} />
+              </div>
+            ) : (
+              <div
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: '50%',
+                  backgroundColor: appleTheme.colors.accentTint,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Key size={16} color={appleTheme.colors.accent} />
+              </div>
+            )}
             {isLocked ? 'Unlock Protected Section' : 'Set Section Password'}
           </div>
-          <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer' }}>
-            <X size={18} color="#94a3b8" />
+          <button
+            onClick={onClose}
+            style={{
+              border: 'none',
+              background: 'none',
+              cursor: 'pointer',
+              color: appleTheme.colors.labelTertiary,
+              width: 28,
+              height: 28,
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: appleTheme.transitions.fast,
+            }}
+          >
+            <X size={18} />
           </button>
         </div>
 
-        <p style={{ fontSize: 12, color: '#475569', margin: '0 0 16px 0', lineHeight: 1.5 }}>
+        <p style={{ fontSize: 13, color: appleTheme.colors.labelSecondary, margin: '0 0 16px 0', lineHeight: 1.5 }}>
           {isLocked
             ? 'This section is password-protected with AES-256 encryption. Enter password to view notes.'
             : 'Protect this section with a password. If you forget your password, notes cannot be recovered.'}
         </p>
 
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: appleTheme.colors.labelSecondary, marginBottom: 6 }}>
               {isLocked ? 'Enter Password' : 'New Password'}
             </label>
             <input
@@ -98,26 +121,37 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
               autoFocus
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              style={inputStyle}
+              style={{ ...appleStyles.inputField, width: '100%' }}
             />
           </div>
 
           {!isLocked && (
             <div>
-              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: appleTheme.colors.labelSecondary, marginBottom: 6 }}>
                 Confirm Password
               </label>
               <input
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                style={inputStyle}
+                style={{ ...appleStyles.inputField, width: '100%' }}
               />
             </div>
           )}
 
           {errorMsg && (
-            <div style={{ color: '#dc2626', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div
+              style={{
+                color: appleTheme.colors.destructive,
+                backgroundColor: appleTheme.colors.destructiveTint,
+                padding: '6px 10px',
+                borderRadius: appleTheme.radii.sm,
+                fontSize: 12,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
               <AlertTriangle size={14} />
               {errorMsg}
             </div>
@@ -131,17 +165,17 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
                   onRemovePassword();
                   onClose();
                 }}
-                style={{ border: 'none', background: 'none', color: '#dc2626', fontSize: 12, cursor: 'pointer' }}
+                style={appleStyles.destructiveButton()}
               >
                 Remove Password
               </button>
             ) : <div />}
 
             <div style={{ display: 'flex', gap: 8 }}>
-              <button type="button" onClick={onClose} style={cancelBtnStyle}>
+              <button type="button" onClick={onClose} style={appleStyles.secondaryButton()}>
                 Cancel
               </button>
-              <button type="submit" style={primaryBtnStyle}>
+              <button type="submit" style={appleStyles.primaryButton()}>
                 {isLocked ? 'Unlock' : 'Protect'}
               </button>
             </div>
@@ -150,34 +184,4 @@ export const PasswordModal: React.FC<PasswordModalProps> = ({
       </div>
     </div>
   );
-};
-
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '8px 10px',
-  borderRadius: 6,
-  border: '1px solid #cbd5e1',
-  fontSize: 13,
-  outline: 'none',
-  boxSizing: 'border-box',
-};
-
-const cancelBtnStyle: React.CSSProperties = {
-  padding: '6px 12px',
-  borderRadius: 4,
-  border: '1px solid #cbd5e1',
-  background: '#ffffff',
-  fontSize: 12,
-  cursor: 'pointer',
-};
-
-const primaryBtnStyle: React.CSSProperties = {
-  padding: '6px 16px',
-  borderRadius: 4,
-  border: 'none',
-  background: '#3b82f6',
-  color: '#ffffff',
-  fontSize: 12,
-  fontWeight: 600,
-  cursor: 'pointer',
 };

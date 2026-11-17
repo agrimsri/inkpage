@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { Container, PMDocNode, NoteTag } from '@inkpage/format';
+import { appleTheme, appleStyles } from '../theme';
 import {
   CheckSquare,
   Square,
@@ -197,64 +198,48 @@ export const OutlineEditor: React.FC<OutlineEditorProps> = ({
         flexDirection: 'column',
       }}
     >
-      {/* Container Toolbar when selected */}
+      {/* Container Floating Toolbar when selected (Apple Frosted Glass Capsule) */}
       {isSelected && (
         <div
           style={{
             position: 'absolute',
-            top: -36,
+            top: -38,
             left: 0,
             display: 'flex',
             alignItems: 'center',
-            gap: 4,
-            padding: '2px 6px',
-            backgroundColor: '#ffffff',
-            border: '1px solid #cbd5e1',
-            borderRadius: 6,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+            gap: 2,
+            padding: '3px 6px',
+            backgroundColor: appleTheme.colors.glassBg,
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            border: `1px solid ${appleTheme.colors.borderSubtle}`,
+            borderRadius: appleTheme.radii.pill,
+            boxShadow: appleTheme.shadows.card,
             zIndex: 100,
           }}
         >
           <button
             title="To-Do Tag (Ctrl+1)"
             onClick={() => toggleTag(activeItemIndex, 'todo')}
-            style={{
-              padding: 4,
-              border: 'none',
-              background: 'transparent',
-              cursor: 'pointer',
-              color: '#3b82f6',
-            }}
+            style={quickToolbarBtnStyle}
           >
-            <CheckSquare size={16} />
+            <CheckSquare size={15} color={appleTheme.colors.accent} />
           </button>
           <button
             title="Important Tag (Ctrl+2)"
             onClick={() => toggleTag(activeItemIndex, 'important')}
-            style={{
-              padding: 4,
-              border: 'none',
-              background: 'transparent',
-              cursor: 'pointer',
-              color: '#eab308',
-            }}
+            style={quickToolbarBtnStyle}
           >
-            <Star size={16} />
+            <Star size={15} color="#ff9500" />
           </button>
           <button
             title="Question Tag (Ctrl+3)"
             onClick={() => toggleTag(activeItemIndex, 'question')}
-            style={{
-              padding: 4,
-              border: 'none',
-              background: 'transparent',
-              cursor: 'pointer',
-              color: '#a855f7',
-            }}
+            style={quickToolbarBtnStyle}
           >
-            <HelpCircle size={16} />
+            <HelpCircle size={15} color={appleTheme.colors.purple} />
           </button>
-          <div style={{ width: 1, height: 16, backgroundColor: '#e2e8f0', margin: '0 2px' }} />
+          <div style={{ width: 1, height: 16, backgroundColor: appleTheme.colors.borderMedium, margin: '0 4px' }} />
           <button
             title="Indent (Tab)"
             onClick={() => {
@@ -264,9 +249,9 @@ export const OutlineEditor: React.FC<OutlineEditorProps> = ({
                 syncToDoc(newItems);
               }
             }}
-            style={{ padding: 4, border: 'none', background: 'transparent', cursor: 'pointer' }}
+            style={quickToolbarBtnStyle}
           >
-            <Indent size={16} />
+            <Indent size={15} color={appleTheme.colors.labelSecondary} />
           </button>
           <button
             title="Outdent (Shift+Tab)"
@@ -277,15 +262,15 @@ export const OutlineEditor: React.FC<OutlineEditorProps> = ({
                 syncToDoc(newItems);
               }
             }}
-            style={{ padding: 4, border: 'none', background: 'transparent', cursor: 'pointer' }}
+            style={quickToolbarBtnStyle}
           >
-            <Outdent size={16} />
+            <Outdent size={15} color={appleTheme.colors.labelSecondary} />
           </button>
         </div>
       )}
 
       {/* Outline Items */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontFamily: appleTheme.fonts.sans }}>
         {items.map((item, index) => {
           const todoTag = item.tags.find((t) => t.type === 'todo');
           const hasImportant = item.tags.some((t) => t.type === 'important');
@@ -301,7 +286,7 @@ export const OutlineEditor: React.FC<OutlineEditorProps> = ({
                 gap: 6,
               }}
             >
-              {/* Bullet / To-Do Checkbox */}
+              {/* Bullet / To-Do Checkbox (Apple Reminders style) */}
               {todoTag ? (
                 <button
                   onClick={() => toggleTag(index, 'todo')}
@@ -310,29 +295,34 @@ export const OutlineEditor: React.FC<OutlineEditorProps> = ({
                     border: 'none',
                     padding: 0,
                     cursor: 'pointer',
-                    color: todoTag.done ? '#16a34a' : '#64748b',
+                    color: todoTag.done ? appleTheme.colors.success : appleTheme.colors.labelTertiary,
                     display: 'flex',
                     alignItems: 'center',
+                    transition: appleTheme.transitions.fast,
                   }}
                 >
-                  {todoTag.done ? <CheckSquare size={16} /> : <Square size={16} />}
+                  {todoTag.done ? (
+                    <CheckSquare size={16} />
+                  ) : (
+                    <Square size={16} />
+                  )}
                 </button>
               ) : (
                 <span
                   style={{
-                    width: 6,
-                    height: 6,
+                    width: 5,
+                    height: 5,
                     borderRadius: '50%',
-                    backgroundColor: '#64748b',
+                    backgroundColor: appleTheme.colors.labelTertiary,
                     flexShrink: 0,
-                    margin: '0 4px',
+                    margin: '0 5px',
                   }}
                 />
               )}
 
               {/* Tag Icons */}
-              {hasImportant && <Star size={14} color="#eab308" fill="#eab308" />}
-              {hasQuestion && <HelpCircle size={14} color="#a855f7" />}
+              {hasImportant && <Star size={14} color="#ff9500" fill="#ff9500" />}
+              {hasQuestion && <HelpCircle size={14} color={appleTheme.colors.purple} />}
 
               {/* Text Field */}
               <input
@@ -354,7 +344,7 @@ export const OutlineEditor: React.FC<OutlineEditorProps> = ({
                   fontFamily: 'inherit',
                   fontSize: 15,
                   lineHeight: '1.5',
-                  color: todoTag?.done ? '#94a3b8' : '#1e293b',
+                  color: todoTag?.done ? appleTheme.colors.labelQuaternary : appleTheme.colors.labelPrimary,
                   textDecoration: todoTag?.done ? 'line-through' : 'none',
                 }}
               />
@@ -364,4 +354,18 @@ export const OutlineEditor: React.FC<OutlineEditorProps> = ({
       </div>
     </div>
   );
+};
+
+const quickToolbarBtnStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: 24,
+  height: 24,
+  padding: 0,
+  border: 'none',
+  background: 'transparent',
+  borderRadius: appleTheme.radii.xs,
+  cursor: 'pointer',
+  transition: appleTheme.transitions.fast,
 };

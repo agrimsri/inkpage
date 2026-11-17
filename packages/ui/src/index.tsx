@@ -15,3 +15,4 @@ export * from './components/ImportWizard';
 export * from './components/ExportModal';
 export * from './components/M0LatencyDashboard';
 export * from './utils/ink';
+export * from './theme';

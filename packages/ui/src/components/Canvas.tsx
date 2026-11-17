@@ -18,6 +18,7 @@ import { InkCanvas } from './InkCanvas';
 import { VirtualRuler } from './VirtualRuler';
 import { MathBox } from './MathBox';
 import { AudioPlayerWidget } from './AudioPlayerWidget';
+import { appleTheme, appleStyles } from '../theme';
 import {
   GripHorizontal,
   Trash2,
@@ -444,7 +445,7 @@ export const Canvas: React.FC<CanvasProps> = React.memo(({
         width: '100%',
         height: '100%',
         overflow: 'hidden',
-        backgroundColor: '#f1f5f9',
+        backgroundColor: appleTheme.colors.bgWindow,
         cursor: selectedShape
           ? 'crosshair'
           : tool === 'text'
@@ -478,12 +479,12 @@ export const Canvas: React.FC<CanvasProps> = React.memo(({
             minWidth: 1600,
             backgroundColor: pageBgColor,
             boxShadow: paperPreset !== 'auto' ? '0 10px 40px rgba(0,0,0,0.08)' : 'none',
-            border: paperPreset !== 'auto' ? '1px solid #cbd5e1' : 'none',
+            border: paperPreset !== 'auto' ? `1px solid ${appleTheme.colors.borderMedium}` : 'none',
             backgroundImage:
               page.background?.kind === 'rule'
-                ? `linear-gradient(${page.background.color || '#e2e8f0'} 1px, transparent 1px)`
+                ? `linear-gradient(${page.background.color || appleTheme.colors.borderMedium} 1px, transparent 1px)`
                 : page.background?.kind === 'grid'
-                ? `radial-gradient(${page.background.color || '#cbd5e1'} 1px, transparent 1px)`
+                ? `radial-gradient(${page.background.color || appleTheme.colors.borderMedium} 1px, transparent 1px)`
                 : 'none',
             backgroundSize:
               page.background?.kind === 'rule'
@@ -534,11 +535,12 @@ export const Canvas: React.FC<CanvasProps> = React.memo(({
                   width: item.w,
                   minHeight: item.h,
                   zIndex: item.z || 1,
-                  borderRadius: 6,
-                  border: isSelected ? '1px solid #3b82f6' : '1px solid transparent',
-                  backgroundColor: isSelected ? '#ffffff' : 'transparent',
-                  boxShadow: isSelected ? '0 4px 20px rgba(0,0,0,0.08)' : 'none',
-                  transition: 'border-color 0.12s, box-shadow 0.12s',
+                  borderRadius: appleTheme.radii.lg,
+                  border: isSelected ? `1.5px solid ${appleTheme.colors.accent}` : '1px solid transparent',
+                  backgroundColor: isSelected ? appleTheme.colors.bgCanvas : 'transparent',
+                  boxShadow: isSelected ? appleTheme.shadows.card : 'none',
+                  transition: 'border-color 0.15s, box-shadow 0.15s',
+                  fontFamily: appleTheme.fonts.sans,
                 }}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -563,18 +565,18 @@ export const Canvas: React.FC<CanvasProps> = React.memo(({
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    padding: '3px 8px',
-                    backgroundColor: isSelected ? '#e2e8f0' : 'transparent',
-                    borderTopLeftRadius: 5,
-                    borderTopRightRadius: 5,
+                    padding: '4px 10px',
+                    backgroundColor: isSelected ? appleTheme.colors.bgSubtle : 'transparent',
+                    borderTopLeftRadius: appleTheme.radii.lg - 1, // calculated nested radius
+                    borderTopRightRadius: appleTheme.radii.lg - 1,
                     cursor: 'grab',
                     opacity: isSelected ? 1 : 0,
                     transition: 'opacity 0.15s',
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#475569' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: appleTheme.colors.labelSecondary }}>
                     <GripHorizontal size={14} />
-                    <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'capitalize' }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'capitalize', letterSpacing: '0.01em' }}>
                       {item.kind}
                     </span>
                   </div>
@@ -587,9 +589,16 @@ export const Canvas: React.FC<CanvasProps> = React.memo(({
                       border: 'none',
                       background: 'none',
                       cursor: 'pointer',
-                      color: '#ef4444',
+                      color: appleTheme.colors.labelTertiary,
                       padding: 2,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: appleTheme.radii.xs,
+                      transition: appleTheme.transitions.fast,
                     }}
+                    onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = appleTheme.colors.destructive)}
+                    onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = appleTheme.colors.labelTertiary)}
                     title="Delete Item"
                   >
                     <Trash2 size={13} />
@@ -814,33 +823,26 @@ export const Canvas: React.FC<CanvasProps> = React.memo(({
                         style={{
                           width: '100%',
                           height: '100%',
-                          backgroundColor: '#f8fafc',
+                          backgroundColor: appleTheme.colors.bgCard,
                           display: 'flex',
                           flexDirection: 'column',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          border: '1px solid #e2e8f0',
-                          borderRadius: 4,
-                          padding: 12,
+                          border: `1px solid ${appleTheme.colors.borderSubtle}`,
+                          borderRadius: appleTheme.radii.md,
+                          padding: 14,
+                          boxShadow: appleTheme.shadows.subtle,
                         }}
                       >
-                        <ImageIcon size={36} color="#94a3b8" />
-                        <span style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>
+                        <ImageIcon size={36} color={appleTheme.colors.labelTertiary} />
+                        <span style={{ fontSize: 12, color: appleTheme.colors.labelSecondary, marginTop: 6, fontWeight: 500 }}>
                           {(item as ImageItem).alt || 'Image Attachment'}
                         </span>
                         {(item as ImageItem).ocr && (
-                          <div
-                            style={{
-                              marginTop: 8,
-                              padding: '4px 8px',
-                              backgroundColor: '#eff6ff',
-                              border: '1px solid #bfdbfe',
-                              borderRadius: 4,
-                              fontSize: 11,
-                              color: '#1d4ed8',
-                            }}
-                          >
-                            OCR: {(item as ImageItem).ocr}
+                          <div style={{ marginTop: 8 }}>
+                            <span style={appleStyles.badge('accent')}>
+                              OCR: {(item as ImageItem).ocr}
+                            </span>
                           </div>
                         )}
                       </div>
@@ -853,38 +855,38 @@ export const Canvas: React.FC<CanvasProps> = React.memo(({
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
-                        padding: '10px 14px',
-                        backgroundColor: '#f8fafc',
-                        border: '1px solid #cbd5e1',
-                        borderRadius: 6,
+                        padding: '12px 14px',
+                        backgroundColor: appleTheme.colors.bgCard,
+                        border: `1px solid ${appleTheme.colors.borderSubtle}`,
+                        borderRadius: appleTheme.radii.md,
+                        boxShadow: appleTheme.shadows.subtle,
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <FileBox size={24} color="#3b82f6" />
+                        <div
+                          style={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: appleTheme.radii.sm,
+                            backgroundColor: appleTheme.colors.accentTint,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <FileBox size={20} color={appleTheme.colors.accent} />
+                        </div>
                         <div>
-                          <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: appleTheme.colors.labelPrimary }}>
                             {(item as FileItem).filename}
                           </div>
-                          <div style={{ fontSize: 11, color: '#64748b' }}>
+                          <div style={{ fontSize: 11, color: appleTheme.colors.labelSecondary, marginTop: 2, fontVariantNumeric: 'tabular-nums' }}>
                             {(item as FileItem).mime} •{' '}
                             {(item as FileItem).size ? `${Math.round((item as FileItem).size! / 1024)} KB` : 'Attached'}
                           </div>
                         </div>
                       </div>
-                      <button
-                        style={{
-                          border: 'none',
-                          background: '#3b82f6',
-                          color: '#ffffff',
-                          padding: '6px 12px',
-                          borderRadius: 4,
-                          cursor: 'pointer',
-                          fontSize: 12,
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 4,
-                        }}
-                      >
+                      <button style={appleStyles.primaryButton(false, 'sm')}>
                         <Download size={13} />
                         Download
                       </button>
@@ -911,9 +913,9 @@ export const Canvas: React.FC<CanvasProps> = React.memo(({
                                   <td
                                     key={c}
                                     style={{
-                                      border: '1px solid #cbd5e1',
+                                      border: `1px solid ${appleTheme.colors.borderSubtle}`,
                                       padding: '6px 8px',
-                                      backgroundColor: cell?.shading || (r === 0 ? '#f8fafc' : '#ffffff'),
+                                      backgroundColor: cell?.shading || (r === 0 ? appleTheme.colors.bgSubtle : appleTheme.colors.bgCard),
                                       fontWeight: r === 0 ? 600 : 400,
                                       minWidth: 80,
                                     }}
@@ -930,6 +932,8 @@ export const Canvas: React.FC<CanvasProps> = React.memo(({
                                         outline: 'none',
                                         background: 'transparent',
                                         fontSize: 13,
+                                        fontFamily: appleTheme.fonts.sans,
+                                        color: appleTheme.colors.labelPrimary,
                                       }}
                                     />
                                   </td>
@@ -945,41 +949,21 @@ export const Canvas: React.FC<CanvasProps> = React.memo(({
                         <div
                           style={{
                             display: 'flex',
-                            gap: 8,
-                            marginTop: 6,
-                            paddingTop: 6,
-                            borderTop: '1px dashed #e2e8f0',
+                            gap: 6,
+                            marginTop: 8,
+                            paddingTop: 8,
+                            borderTop: `1px solid ${appleTheme.colors.borderSubtle}`,
                           }}
                         >
                           <button
                             onClick={() => handleTableAddRow(item.id)}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 4,
-                              fontSize: 11,
-                              padding: '2px 6px',
-                              backgroundColor: '#f1f5f9',
-                              border: '1px solid #cbd5e1',
-                              borderRadius: 4,
-                              cursor: 'pointer',
-                            }}
+                            style={appleStyles.secondaryButton(false, 'sm')}
                           >
                             <Rows size={12} /> Add Row
                           </button>
                           <button
                             onClick={() => handleTableAddCol(item.id)}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 4,
-                              fontSize: 11,
-                              padding: '2px 6px',
-                              backgroundColor: '#f1f5f9',
-                              border: '1px solid #cbd5e1',
-                              borderRadius: 4,
-                              cursor: 'pointer',
-                            }}
+                            style={appleStyles.secondaryButton(false, 'sm')}
                           >
                             <Columns size={12} /> Add Col
                           </button>
@@ -1036,8 +1020,10 @@ export const Canvas: React.FC<CanvasProps> = React.memo(({
                       bottom: -4,
                       width: 10,
                       height: 10,
-                      backgroundColor: '#3b82f6',
-                      borderRadius: 2,
+                      backgroundColor: appleTheme.colors.accent,
+                      border: '1.5px solid #ffffff',
+                      borderRadius: appleTheme.radii.xs,
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
                       cursor: 'se-resize',
                     }}
                   />
@@ -1051,7 +1037,7 @@ export const Canvas: React.FC<CanvasProps> = React.memo(({
       {/* On-screen Virtual Ruler */}
       <VirtualRuler visible={rulerVisible} onClose={onToggleRuler || (() => {})} />
 
-      {/* Canvas Viewport Zoom & Reset Overlay */}
+      {/* Canvas Viewport Zoom & Reset Overlay (Apple Frosted Glass Capsule) */}
       <div
         style={{
           position: 'absolute',
@@ -1060,35 +1046,80 @@ export const Canvas: React.FC<CanvasProps> = React.memo(({
           display: 'flex',
           alignItems: 'center',
           gap: 6,
-          backgroundColor: '#ffffff',
-          padding: '4px 10px',
-          borderRadius: 8,
-          border: '1px solid #e2e8f0',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+          backgroundColor: appleTheme.colors.glassBg,
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          padding: '4px 12px',
+          borderRadius: appleTheme.radii.pill,
+          border: `1px solid ${appleTheme.colors.borderSubtle}`,
+          boxShadow: appleTheme.shadows.card,
+          fontFamily: appleTheme.fonts.sans,
           fontSize: 12,
           fontWeight: 600,
-          color: '#475569',
+          color: appleTheme.colors.labelPrimary,
+          userSelect: 'none',
         }}
       >
         <button
           onClick={() => setZoom((z) => Math.max(0.25, z * 0.9))}
-          style={{ border: 'none', background: 'none', cursor: 'pointer', padding: '0 4px' }}
+          style={{
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+            padding: '2px 4px',
+            color: appleTheme.colors.labelSecondary,
+            fontSize: 14,
+            fontWeight: 600,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderRadius: appleTheme.radii.xs,
+            transition: appleTheme.transitions.fast,
+          }}
+          title="Zoom Out"
         >
           -
         </button>
-        <span>{Math.round(zoom * 100)}%</span>
+        <span style={{ fontVariantNumeric: 'tabular-nums', minWidth: 40, textAlign: 'center' }}>
+          {Math.round(zoom * 100)}%
+        </span>
         <button
           onClick={() => setZoom((z) => Math.min(3.0, z * 1.1))}
-          style={{ border: 'none', background: 'none', cursor: 'pointer', padding: '0 4px' }}
+          style={{
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+            padding: '2px 4px',
+            color: appleTheme.colors.labelSecondary,
+            fontSize: 14,
+            fontWeight: 600,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderRadius: appleTheme.radii.xs,
+            transition: appleTheme.transitions.fast,
+          }}
+          title="Zoom In"
         >
           +
         </button>
+        <div style={{ width: 1, height: 14, backgroundColor: appleTheme.colors.borderMedium, margin: '0 2px' }} />
         <button
           onClick={() => {
             setZoom(1.0);
             setPan({ x: 0, y: 0 });
           }}
-          style={{ border: 'none', background: 'none', cursor: 'pointer', marginLeft: 4, color: '#3b82f6' }}
+          style={{
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+            color: appleTheme.colors.accent,
+            fontSize: 12,
+            fontWeight: 600,
+            padding: '2px 4px',
+            borderRadius: appleTheme.radii.xs,
+            transition: appleTheme.transitions.fast,
+          }}
           title="Reset Zoom (Ctrl+0)"
         >
           Reset

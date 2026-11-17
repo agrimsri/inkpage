@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { ToolType } from './ToolPalette';
 import type { ShapeType } from '@inkpage/format';
+import { appleTheme, appleStyles } from '../theme';
 import {
   Undo2,
   Redo2,
@@ -176,6 +177,10 @@ export interface RibbonProps {
 }
 
 const FONTS = [
+  'SF Pro',
+  'SF Mono',
+  'New York',
+  'Helvetica Neue',
   'Segoe UI',
   'Calibri',
   'Arial',
@@ -183,7 +188,6 @@ const FONTS = [
   'Georgia',
   'Fira Code',
   'Courier New',
-  'Comic Sans MS',
 ];
 
 const FONT_SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 36, 48];
@@ -201,7 +205,7 @@ const PASTEL_PAGE_COLORS = [
   { name: 'Gray', color: '#f8fafc' },
 ];
 
-const PEN_COLORS = ['#0f172a', '#2563eb', '#dc2626', '#16a34a', '#9333ea', '#ea580c'];
+const PEN_COLORS = ['#1d1d1f', '#0071e3', '#d70015', '#1a7f37', '#8944ab', '#9e5900'];
 const HIGHLIGHT_COLORS = ['#fef08a', '#bbf7d0', '#bae6fd', '#fbcfe8', '#fed7aa'];
 const PEN_WIDTHS = [2, 4, 8, 14];
 
@@ -219,25 +223,28 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
       style={{
         display: 'flex',
         flexDirection: 'column',
-        backgroundColor: '#ffffff',
-        borderBottom: '1px solid #cbd5e1',
+        backgroundColor: appleTheme.colors.bgCanvas,
+        borderBottom: `1px solid ${appleTheme.colors.borderSubtle}`,
         userSelect: 'none',
-        boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+        boxShadow: appleTheme.shadows.subtle,
+        fontFamily: appleTheme.fonts.sans,
       }}
     >
-      {/* 1. Ribbon Tab Headers */}
+      {/* 1. Ribbon Tab Headers (macOS Unified Toolbar Style) */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
-          padding: '0 8px',
-          backgroundColor: '#f8fafc',
-          borderBottom: '1px solid #e2e8f0',
-          gap: 2,
+          padding: '5px 12px',
+          backgroundColor: appleTheme.colors.bgSidebar,
+          borderBottom: `1px solid ${appleTheme.colors.borderSubtle}`,
+          gap: 8,
+          height: 40,
+          boxSizing: 'border-box',
         }}
       >
         {/* Quick Access Toolbar */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginRight: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2, marginRight: 6 }}>
           <button onClick={props.onUndo} title="Undo (Ctrl+Z)" style={iconButtonStyle}>
             <Undo2 size={15} />
           </button>
@@ -246,51 +253,37 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
           </button>
         </div>
 
-        <div style={{ width: 1, height: 18, backgroundColor: '#cbd5e1', marginRight: 8 }} />
+        <div style={{ width: 1, height: 18, backgroundColor: appleTheme.colors.borderMedium, marginRight: 4 }} />
 
-        {/* Tab Buttons */}
-        {(['home', 'insert', 'draw', 'view'] as const).map((tab) => {
-          const isActive = props.activeTab === tab;
-          return (
+        {/* Tab Buttons (macOS Inset Segmented Control) */}
+        <div style={appleStyles.segmentedControlTrack}>
+          {(['home', 'insert', 'draw', 'view'] as const).map((tab) => {
+            const isActive = props.activeTab === tab;
+            return (
+              <button
+                key={tab}
+                onClick={() => props.onSelectTab(tab)}
+                style={appleStyles.segmentedControlItem(isActive)}
+              >
+                <span style={{ textTransform: 'capitalize' }}>{tab}</span>
+              </button>
+            );
+          })}
+
+          {/* Contextual Table Tools Tab */}
+          {props.isTableActive && (
             <button
-              key={tab}
-              onClick={() => props.onSelectTab(tab)}
+              onClick={() => props.onSelectTab('table')}
               style={{
-                padding: '6px 16px',
-                border: 'none',
-                backgroundColor: isActive ? '#ffffff' : 'transparent',
-                borderBottom: isActive ? '2px solid #2563eb' : '2px solid transparent',
-                fontWeight: isActive ? 600 : 500,
-                fontSize: 13,
-                color: isActive ? '#1d4ed8' : '#475569',
-                cursor: 'pointer',
-                textTransform: 'capitalize',
-                transition: 'color 0.1s',
+                ...appleStyles.segmentedControlItem(props.activeTab === 'table'),
+                color: appleTheme.colors.success,
+                backgroundColor: props.activeTab === 'table' ? appleTheme.colors.bgCard : appleTheme.colors.successTint,
               }}
             >
-              {tab}
+              Table Tools
             </button>
-          );
-        })}
-
-        {/* Contextual Table Tools Tab */}
-        {props.isTableActive && (
-          <button
-            onClick={() => props.onSelectTab('table')}
-            style={{
-              padding: '6px 16px',
-              border: 'none',
-              backgroundColor: props.activeTab === 'table' ? '#ffffff' : '#f0fdf4',
-              borderBottom: props.activeTab === 'table' ? '2px solid #16a34a' : '2px solid transparent',
-              fontWeight: 600,
-              fontSize: 13,
-              color: '#16a34a',
-              cursor: 'pointer',
-            }}
-          >
-            Table Tools
-          </button>
-        )}
+          )}
+        </div>
 
         <div style={{ flex: 1 }} />
 
@@ -298,10 +291,16 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
         <button
           onClick={props.onToggleFullPageView}
           title="Full Page View (F11)"
-          style={{ ...iconButtonStyle, gap: 4 }}
+          style={{
+            ...appleStyles.secondaryButton(),
+            height: 26,
+            padding: '0 10px',
+            borderRadius: appleTheme.radii.pill,
+            fontSize: 11,
+          }}
         >
-          <Maximize2 size={14} />
-          <span style={{ fontSize: 11, fontWeight: 500 }}>Full Page</span>
+          <Maximize2 size={12} />
+          <span>Full Page</span>
         </button>
       </div>
 
@@ -312,7 +311,8 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
           alignItems: 'center',
           padding: '6px 14px',
           gap: 12,
-          minHeight: 52,
+          minHeight: 56,
+          backgroundColor: appleTheme.colors.bgCanvas,
           overflowX: 'auto',
         }}
       >
@@ -326,7 +326,7 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
                 title="Paste (Ctrl+V)"
                 style={actionButtonStyle}
               >
-                <Clipboard size={16} color="#3b82f6" />
+                <Clipboard size={16} color={appleTheme.colors.accent} />
                 <span>Paste</span>
               </button>
             </RibbonGroup>
@@ -468,13 +468,13 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
                 </button>
                 <button
                   onClick={() => props.onApplyHeading(1)}
-                  style={{ ...actionButtonStyle, fontSize: 13, fontWeight: 700, padding: '4px 8px', color: '#1d4ed8' }}
+                  style={{ ...actionButtonStyle, fontSize: 13, fontWeight: 700, padding: '4px 8px', color: appleTheme.colors.accent }}
                 >
                   Heading 1
                 </button>
                 <button
                   onClick={() => props.onApplyHeading(2)}
-                  style={{ ...actionButtonStyle, fontSize: 12, fontWeight: 600, padding: '4px 8px', color: '#2563eb' }}
+                  style={{ ...actionButtonStyle, fontSize: 12, fontWeight: 600, padding: '4px 8px', color: appleTheme.colors.accent }}
                 >
                   Heading 2
                 </button>
@@ -489,7 +489,7 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
                 <button
                   onClick={() => props.onApplyTag('todo')}
                   title="To-Do Tag (Ctrl+1)"
-                  style={{ ...actionButtonStyle, color: '#16a34a' }}
+                  style={{ ...actionButtonStyle, color: appleTheme.colors.success }}
                 >
                   <CheckSquare size={16} />
                   <span>To-Do</span>
@@ -497,7 +497,7 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
                 <button
                   onClick={() => props.onApplyTag('important')}
                   title="Important Tag (Ctrl+2)"
-                  style={{ ...actionButtonStyle, color: '#eab308' }}
+                  style={{ ...actionButtonStyle, color: appleTheme.colors.warning }}
                 >
                   <Star size={16} />
                   <span>Important</span>
@@ -505,7 +505,7 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
                 <button
                   onClick={() => props.onApplyTag('question')}
                   title="Question Tag (Ctrl+3)"
-                  style={{ ...actionButtonStyle, color: '#a855f7' }}
+                  style={{ ...actionButtonStyle, color: appleTheme.colors.purple }}
                 >
                   <HelpCircle size={16} />
                   <span>Question</span>
@@ -513,7 +513,12 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
                 <button
                   onClick={props.onOpenTagsSummary}
                   title="Find Tags Summary Pane"
-                  style={{ ...actionButtonStyle, backgroundColor: '#eff6ff', color: '#1d4ed8' }}
+                  style={{
+                    ...actionButtonStyle,
+                    backgroundColor: appleTheme.colors.accentTint,
+                    color: appleTheme.colors.accent,
+                    fontWeight: 600,
+                  }}
                 >
                   <Layers size={15} />
                   <span>Tag Summary</span>
@@ -533,7 +538,7 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
                 title="Insert Space (Drag down on canvas to insert vertical space)"
                 style={actionButtonStyle}
               >
-                <MoveVertical size={16} color="#3b82f6" />
+                <MoveVertical size={16} color={appleTheme.colors.accent} />
                 <span>Insert Space</span>
               </button>
             </RibbonGroup>
@@ -547,7 +552,7 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
                   onClick={() => setShowTablePicker(!showTablePicker)}
                   style={actionButtonStyle}
                 >
-                  <TableIcon size={16} color="#3b82f6" />
+                  <TableIcon size={16} color={appleTheme.colors.accent} />
                   <span>Table</span>
                   <ChevronDown size={12} />
                 </button>
@@ -556,40 +561,42 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
                 {showTablePicker && (
                   <div
                     style={{
-                      position: 'absolute',
+                      ...appleStyles.popoverCard,
                       top: 36,
                       left: 0,
-                      backgroundColor: '#ffffff',
-                      border: '1px solid #cbd5e1',
-                      borderRadius: 6,
-                      padding: 10,
-                      boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
-                      zIndex: 1000,
                     }}
                   >
-                    <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 6 }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: appleTheme.colors.labelSecondary, marginBottom: 8, fontVariantNumeric: 'tabular-nums' }}>
                       {hoverGrid.r} × {hoverGrid.c} Table
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(10, 16px)', gap: 3 }}>
                       {Array.from({ length: 8 }).map((_, r) =>
-                        Array.from({ length: 10 }).map((_, c) => (
-                          <div
-                            key={`${r}-${c}`}
-                            onMouseEnter={() => setHoverGrid({ r: r + 1, c: c + 1 })}
-                            onClick={() => {
-                              props.onInsertTable(r + 1, c + 1);
-                              setShowTablePicker(false);
-                            }}
-                            style={{
-                              width: 16,
-                              height: 16,
-                              border: '1px solid #94a3b8',
-                              backgroundColor:
-                                r < hoverGrid.r && c < hoverGrid.c ? '#bfdbfe' : '#ffffff',
-                              cursor: 'pointer',
-                            }}
-                          />
-                        ))
+                        Array.from({ length: 10 }).map((_, c) => {
+                          const isHovered = r < hoverGrid.r && c < hoverGrid.c;
+                          return (
+                            <div
+                              key={`${r}-${c}`}
+                              onMouseEnter={() => setHoverGrid({ r: r + 1, c: c + 1 })}
+                              onClick={() => {
+                                props.onInsertTable(r + 1, c + 1);
+                                setShowTablePicker(false);
+                              }}
+                              style={{
+                                width: 16,
+                                height: 16,
+                                borderRadius: appleTheme.radii.xs - 1,
+                                border: isHovered
+                                  ? `1px solid ${appleTheme.colors.accent}`
+                                  : `1px solid ${appleTheme.colors.borderMedium}`,
+                                backgroundColor: isHovered
+                                  ? appleTheme.colors.accentTintHover
+                                  : appleTheme.colors.bgCard,
+                                cursor: 'pointer',
+                                transition: appleTheme.transitions.fast,
+                              }}
+                            />
+                          );
+                        })
                       )}
                     </div>
                   </div>
@@ -602,15 +609,15 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
             {/* Files & Media */}
             <RibbonGroup title="Files & Media">
               <button onClick={props.onInsertFile} style={actionButtonStyle} title="Attach File">
-                <Paperclip size={16} color="#64748b" />
+                <Paperclip size={16} color={appleTheme.colors.labelSecondary} />
                 <span>File Attachment</span>
               </button>
               <button onClick={props.onInsertPdf} style={actionButtonStyle} title="PDF Printout">
-                <FileText size={16} color="#ef4444" />
+                <FileText size={16} color={appleTheme.colors.destructive} />
                 <span>PDF Printout</span>
               </button>
               <button onClick={props.onInsertImage} style={actionButtonStyle} title="Insert Picture">
-                <ImageIcon size={16} color="#16a34a" />
+                <ImageIcon size={16} color={appleTheme.colors.success} />
                 <span>Picture</span>
               </button>
               <button
@@ -621,19 +628,23 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
                 style={actionButtonStyle}
                 title="Embed Online Video"
               >
-                <Video size={16} color="#dc2626" />
+                <Video size={16} color={appleTheme.colors.destructive} />
                 <span>Online Video</span>
               </button>
               <button
                 onClick={props.onToggleAudioRecording}
                 style={{
                   ...actionButtonStyle,
-                  backgroundColor: props.isRecordingAudio ? '#fee2e2' : 'transparent',
-                  color: props.isRecordingAudio ? '#dc2626' : 'inherit',
+                  backgroundColor: props.isRecordingAudio ? appleTheme.colors.destructiveTint : 'transparent',
+                  color: props.isRecordingAudio ? appleTheme.colors.destructive : 'inherit',
                 }}
                 title="Record Meeting Audio"
               >
-                {props.isRecordingAudio ? <MicOff size={16} color="#dc2626" /> : <Mic size={16} />}
+                {props.isRecordingAudio ? (
+                  <MicOff size={16} color={appleTheme.colors.destructive} />
+                ) : (
+                  <Mic size={16} color={appleTheme.colors.destructive} />
+                )}
                 <span>{props.isRecordingAudio ? 'Stop Recording' : 'Record Audio'}</span>
               </button>
             </RibbonGroup>
@@ -643,11 +654,11 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
             {/* Math & Links */}
             <RibbonGroup title="Links & Math">
               <button onClick={props.onInsertLink} style={actionButtonStyle} title="Insert Link (Ctrl+K)">
-                <Link size={16} color="#2563eb" />
+                <Link size={16} color={appleTheme.colors.accent} />
                 <span>Link</span>
               </button>
               <button onClick={props.onInsertMath} style={actionButtonStyle} title="Insert LaTeX Equation (Alt+=)">
-                <Sigma size={16} color="#7c3aed" />
+                <Sigma size={16} color={appleTheme.colors.purple} />
                 <span>Equation</span>
               </button>
             </RibbonGroup>
@@ -661,7 +672,7 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
                 style={actionButtonStyle}
                 title="Insert Date (Alt+Shift+D)"
               >
-                <Calendar size={15} />
+                <Calendar size={15} color={appleTheme.colors.labelSecondary} />
                 <span>Date</span>
               </button>
               <button
@@ -669,7 +680,7 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
                 style={actionButtonStyle}
                 title="Insert Time (Alt+Shift+T)"
               >
-                <Clock size={15} />
+                <Clock size={15} color={appleTheme.colors.labelSecondary} />
                 <span>Time</span>
               </button>
               <button
@@ -680,7 +691,7 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
                 style={actionButtonStyle}
                 title="Page Templates"
               >
-                <LayoutTemplate size={16} color="#f59e0b" />
+                <LayoutTemplate size={16} color={appleTheme.colors.warning} />
                 <span>Templates</span>
               </button>
             </RibbonGroup>
@@ -740,7 +751,7 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
               </button>
 
               {/* Color swatches */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginLeft: 6 }}>
                 {(props.activeTool === 'highlighter' ? HIGHLIGHT_COLORS : PEN_COLORS).map((c) => (
                   <button
                     key={c}
@@ -750,8 +761,11 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
                       height: 20,
                       borderRadius: '50%',
                       backgroundColor: c,
-                      border: props.activeColor === c ? '2px solid #2563eb' : '1px solid #cbd5e1',
+                      border: props.activeColor === c ? '2.5px solid #ffffff' : `1px solid ${appleTheme.colors.borderMedium}`,
+                      boxShadow: props.activeColor === c ? `0 0 0 2px ${props.activeTool === 'highlighter' ? appleTheme.colors.accent : c}` : 'none',
                       cursor: 'pointer',
+                      padding: 0,
+                      transition: appleTheme.transitions.fast,
                     }}
                   />
                 ))}
@@ -766,13 +780,15 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
                     style={{
                       width: 24,
                       height: 24,
-                      borderRadius: 4,
-                      border: props.activeWidth === w ? '2px solid #2563eb' : '1px solid #e2e8f0',
-                      background: props.activeWidth === w ? '#eff6ff' : '#ffffff',
+                      borderRadius: appleTheme.radii.xs,
+                      border: props.activeWidth === w ? `1.5px solid ${appleTheme.colors.accent}` : `1px solid ${appleTheme.colors.borderMedium}`,
+                      background: props.activeWidth === w ? appleTheme.colors.accentTint : appleTheme.colors.bgCard,
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
+                      transition: appleTheme.transitions.fast,
+                      padding: 0,
                     }}
                   >
                     <div
@@ -852,7 +868,7 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
                 style={activeToggleStyle(props.inkToShapeEnabled)}
                 title="Ink to Shape (Draw-and-Hold Recognition)"
               >
-                <Sparkles size={16} color="#eab308" />
+                <Sparkles size={16} color={appleTheme.colors.warning} />
                 <span>Ink to Shape</span>
               </button>
               <button
@@ -860,7 +876,7 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
                 style={activeToggleStyle(props.rulerEnabled)}
                 title="Virtual On-Screen Ruler (Snap straight lines)"
               >
-                <Ruler size={16} color="#3b82f6" />
+                <Ruler size={16} color={appleTheme.colors.accent} />
                 <span>Ruler</span>
               </button>
             </RibbonGroup>
@@ -878,7 +894,7 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
                   onClick={() => setShowPageColorMenu(!showPageColorMenu)}
                   style={actionButtonStyle}
                 >
-                  <Palette size={16} color="#3b82f6" />
+                  <Palette size={16} color={appleTheme.colors.accent} />
                   <span>Page Color</span>
                   <ChevronDown size={12} />
                 </button>
@@ -897,10 +913,11 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
                           style={{
                             width: 24,
                             height: 24,
-                            borderRadius: 4,
+                            borderRadius: appleTheme.radii.xs,
                             backgroundColor: p.color,
-                            border: '1px solid #cbd5e1',
+                            border: `1px solid ${appleTheme.colors.borderMedium}`,
                             cursor: 'pointer',
+                            transition: appleTheme.transitions.fast,
                           }}
                         />
                       ))}
@@ -912,14 +929,14 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
               {/* Rule Lines */}
               <div style={{ position: 'relative' }}>
                 <button onClick={() => setShowRuleMenu(!showRuleMenu)} style={actionButtonStyle}>
-                  <LayoutTemplate size={16} color="#64748b" />
+                  <LayoutTemplate size={16} color={appleTheme.colors.labelSecondary} />
                   <span>Rule Lines</span>
                   <ChevronDown size={12} />
                 </button>
 
                 {showRuleMenu && (
                   <div style={{ ...dropdownStyle, width: 180 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', marginBottom: 4 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: appleTheme.colors.labelSecondary, marginBottom: 4 }}>
                       Rule Spacing
                     </div>
                     <button
@@ -1009,7 +1026,7 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
                 onClick={props.onToggleSectionLock}
                 style={{
                   ...actionButtonStyle,
-                  color: props.isSectionLocked ? '#dc2626' : '#16a34a',
+                  color: props.isSectionLocked ? appleTheme.colors.destructive : appleTheme.colors.success,
                 }}
                 title="Password Protect Section"
               >
@@ -1017,11 +1034,11 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
                 <span>{props.isSectionLocked ? 'Locked Section' : 'Protect Section'}</span>
               </button>
               <button onClick={props.onOpenVersions} style={actionButtonStyle} title="Page Version History">
-                <History size={16} color="#3b82f6" />
+                <History size={16} color={appleTheme.colors.accent} />
                 <span>Page Versions</span>
               </button>
               <button onClick={props.onOpenRecycleBin} style={actionButtonStyle} title="Notebook Recycle Bin">
-                <Trash2 size={16} color="#64748b" />
+                <Trash2 size={16} color={appleTheme.colors.labelSecondary} />
                 <span>Recycle Bin</span>
               </button>
             </RibbonGroup>
@@ -1049,13 +1066,13 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
             <Divider />
 
             <RibbonGroup title="Delete">
-              <button onClick={props.onTableDeleteRow} style={{ ...actionButtonStyle, color: '#dc2626' }}>
+              <button onClick={props.onTableDeleteRow} style={{ ...actionButtonStyle, color: appleTheme.colors.destructive }}>
                 Delete Row
               </button>
-              <button onClick={props.onTableDeleteCol} style={{ ...actionButtonStyle, color: '#dc2626' }}>
+              <button onClick={props.onTableDeleteCol} style={{ ...actionButtonStyle, color: appleTheme.colors.destructive }}>
                 Delete Column
               </button>
-              <button onClick={props.onTableDeleteTable} style={{ ...actionButtonStyle, color: '#dc2626' }}>
+              <button onClick={props.onTableDeleteTable} style={{ ...actionButtonStyle, color: appleTheme.colors.destructive }}>
                 Delete Table
               </button>
             </RibbonGroup>
@@ -1064,17 +1081,19 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
 
             <RibbonGroup title="Format & Shading">
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                {['#ffffff', '#f1f5f9', '#fef08a', '#bbf7d0', '#bae6fd'].map((c) => (
+                {['#ffffff', '#f5f5f7', '#fef08a', '#bbf7d0', '#bae6fd'].map((c) => (
                   <button
                     key={c}
                     onClick={() => props.onTableCellShading?.(c)}
                     style={{
                       width: 20,
                       height: 20,
-                      borderRadius: 4,
+                      borderRadius: appleTheme.radii.xs,
                       backgroundColor: c,
-                      border: '1px solid #cbd5e1',
+                      border: `1px solid ${appleTheme.colors.borderMedium}`,
                       cursor: 'pointer',
+                      transition: appleTheme.transitions.fast,
+                      padding: 0,
                     }}
                   />
                 ))}
@@ -1104,77 +1123,100 @@ const RibbonGroup: React.FC<{ title: string; children: React.ReactNode }> = ({
   title,
   children,
 }) => (
-  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
     <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>{children}</div>
-    <span style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>{title}</span>
+    <span style={{ fontSize: 10, fontWeight: 500, color: appleTheme.colors.labelTertiary, marginTop: 2, letterSpacing: '0.01em' }}>
+      {title}
+    </span>
   </div>
 );
 
 const Divider: React.FC = () => (
-  <div style={{ width: 1, height: 40, backgroundColor: '#e2e8f0', margin: '0 4px' }} />
+  <div style={{ width: 1, height: 32, backgroundColor: appleTheme.colors.borderSubtle, margin: '0 4px', flexShrink: 0 }} />
 );
 
 const actionButtonStyle: React.CSSProperties = {
-  display: 'flex',
+  display: 'inline-flex',
   alignItems: 'center',
+  justifyContent: 'center',
   gap: 5,
-  padding: '5px 8px',
-  borderRadius: 5,
+  height: 28,
+  padding: '0 8px',
+  borderRadius: appleTheme.radii.sm,
   border: '1px solid transparent',
   backgroundColor: 'transparent',
-  color: '#334155',
+  color: appleTheme.colors.labelPrimary,
+  fontFamily: appleTheme.fonts.sans,
   fontSize: 12,
   fontWeight: 500,
   cursor: 'pointer',
+  transition: appleTheme.transitions.fast,
+  whiteSpace: 'nowrap',
+  flexShrink: 0,
+  userSelect: 'none',
+  textDecoration: 'none',
 };
 
 const activeToggleStyle = (isActive: boolean): React.CSSProperties => ({
   ...actionButtonStyle,
-  border: isActive ? '1px solid #bfdbfe' : '1px solid transparent',
-  backgroundColor: isActive ? '#eff6ff' : 'transparent',
-  color: isActive ? '#1d4ed8' : '#334155',
+  border: isActive ? `1px solid ${appleTheme.colors.accentTintHover}` : '1px solid transparent',
+  backgroundColor: isActive ? appleTheme.colors.accentTint : 'transparent',
+  color: isActive ? appleTheme.colors.accent : appleTheme.colors.labelPrimary,
+  fontWeight: isActive ? 600 : 500,
 });
 
 const iconButtonStyle: React.CSSProperties = {
-  display: 'flex',
+  display: 'inline-flex',
   alignItems: 'center',
-  padding: '4px 6px',
-  borderRadius: 4,
+  justifyContent: 'center',
+  height: 26,
+  width: 26,
+  padding: 0,
+  borderRadius: appleTheme.radii.sm,
   border: 'none',
   background: 'transparent',
   cursor: 'pointer',
-  color: '#64748b',
+  color: appleTheme.colors.labelSecondary,
+  transition: appleTheme.transitions.fast,
+  flexShrink: 0,
 };
 
 const selectStyle: React.CSSProperties = {
-  padding: '3px 6px',
-  borderRadius: 4,
-  border: '1px solid #cbd5e1',
+  height: 28,
+  padding: '0 22px 0 8px',
+  borderRadius: appleTheme.radii.sm,
+  border: `1px solid ${appleTheme.colors.borderMedium}`,
   fontSize: 12,
-  backgroundColor: '#ffffff',
+  fontFamily: appleTheme.fonts.sans,
+  color: appleTheme.colors.labelPrimary,
+  backgroundColor: appleTheme.colors.bgCard,
   outline: 'none',
   cursor: 'pointer',
+  transition: appleTheme.transitions.fast,
+  appearance: 'none',
+  WebkitAppearance: 'none',
+  backgroundImage: `url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%236e6e73' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
+  backgroundRepeat: 'no-repeat',
+  backgroundPosition: 'right 6px center',
 };
 
 const dropdownStyle: React.CSSProperties = {
-  position: 'absolute',
+  ...appleStyles.popoverCard,
   top: 36,
   left: 0,
-  backgroundColor: '#ffffff',
-  border: '1px solid #cbd5e1',
-  borderRadius: 6,
-  padding: 8,
-  boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
-  zIndex: 1000,
 };
 
 const menuItemStyle: React.CSSProperties = {
   width: '100%',
   textAlign: 'left',
-  padding: '5px 8px',
+  padding: '6px 10px',
   border: 'none',
   background: 'none',
-  borderRadius: 4,
+  borderRadius: appleTheme.radii.sm,
   fontSize: 12,
+  fontFamily: appleTheme.fonts.sans,
+  color: appleTheme.colors.labelPrimary,
   cursor: 'pointer',
+  transition: appleTheme.transitions.fast,
+  whiteSpace: 'nowrap',
 };

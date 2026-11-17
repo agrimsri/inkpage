@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { TagSummaryItem } from '@inkpage/format';
 import { CheckSquare, Square, Star, HelpCircle, X } from 'lucide-react';
+import { appleTheme, appleStyles } from '../theme';
 
 export interface TagsSummaryPaneProps {
   notebookId: string;
@@ -47,12 +48,13 @@ export const TagsSummaryPane: React.FC<TagsSummaryPaneProps> = ({
         right: 0,
         width: 380,
         height: '100%',
-        backgroundColor: '#ffffff',
-        borderLeft: '1px solid #e2e8f0',
-        boxShadow: '-4px 0 20px rgba(0,0,0,0.06)',
+        backgroundColor: appleTheme.colors.bgCanvas,
+        borderLeft: `1px solid ${appleTheme.colors.borderSubtle}`,
+        boxShadow: appleTheme.shadows.modal,
         display: 'flex',
         flexDirection: 'column',
         zIndex: 500,
+        fontFamily: appleTheme.fonts.sans,
       }}
     >
       {/* Header */}
@@ -61,57 +63,68 @@ export const TagsSummaryPane: React.FC<TagsSummaryPaneProps> = ({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '14px 16px',
-          borderBottom: '1px solid #e2e8f0',
+          padding: '14px 18px',
+          borderBottom: `1px solid ${appleTheme.colors.borderSubtle}`,
+          backgroundColor: appleTheme.colors.bgSidebar,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, fontSize: 14 }}>
-          <CheckSquare size={18} color="#16a34a" />
-          Tags Summary Pane
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, fontSize: 14, color: appleTheme.colors.labelPrimary }}>
+          <CheckSquare size={18} color={appleTheme.colors.success} />
+          Tags Summary
         </div>
         <button
           onClick={onClose}
-          style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8' }}
+          style={{
+            border: 'none',
+            background: 'none',
+            cursor: 'pointer',
+            color: appleTheme.colors.labelTertiary,
+            width: 28,
+            height: 28,
+            borderRadius: '50%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: appleTheme.transitions.fast,
+          }}
+          onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.backgroundColor = appleTheme.colors.bgSubtleHover)}
+          onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.backgroundColor = 'transparent')}
         >
           <X size={18} />
         </button>
       </div>
 
-      {/* Filter Tabs */}
+      {/* Filter Tabs (Apple Segmented Control) */}
       <div
         style={{
-          display: 'flex',
-          gap: 6,
-          padding: '8px 16px',
-          borderBottom: '1px solid #f1f5f9',
-          backgroundColor: '#f8fafc',
+          padding: '10px 16px',
+          borderBottom: `1px solid ${appleTheme.colors.borderSubtle}`,
+          backgroundColor: appleTheme.colors.bgCanvas,
         }}
       >
-        {(['all', 'todo', 'important', 'question'] as const).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setFilter(tab)}
-            style={{
-              padding: '4px 8px',
-              borderRadius: 4,
-              border: filter === tab ? '1px solid #cbd5e1' : '1px solid transparent',
-              backgroundColor: filter === tab ? '#ffffff' : 'transparent',
-              fontSize: 12,
-              fontWeight: 500,
-              textTransform: 'capitalize',
-              cursor: 'pointer',
-              color: filter === tab ? '#0f172a' : '#64748b',
-            }}
-          >
-            {tab}
-          </button>
-        ))}
+        <div style={{ ...appleStyles.segmentedControlTrack, width: '100%', justifyContent: 'space-between' }}>
+          {(['all', 'todo', 'important', 'question'] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setFilter(tab)}
+              style={{
+                ...appleStyles.segmentedControlItem(filter === tab),
+                flex: 1,
+                textTransform: 'capitalize',
+              }}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Tag Items List */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
         {filteredTags.length === 0 && (
-          <div style={{ fontSize: 13, color: '#94a3b8' }}>No tags found in this notebook.</div>
+          <div style={{ fontSize: 13, color: appleTheme.colors.labelTertiary, textAlign: 'center', padding: '32px 0' }}>
+            No tags found in this notebook.
+          </div>
         )}
 
         {filteredTags.map((tag, idx) => (
@@ -119,32 +132,45 @@ export const TagsSummaryPane: React.FC<TagsSummaryPaneProps> = ({
             key={idx}
             onClick={() => onJumpToPage(tag.sectionId, tag.pageId)}
             style={{
-              padding: '10px 12px',
-              backgroundColor: '#f8fafc',
-              borderRadius: 6,
-              border: '1px solid #e2e8f0',
-              marginBottom: 8,
+              padding: '12px 14px',
+              backgroundColor: appleTheme.colors.bgCard,
+              borderRadius: appleTheme.radii.md,
+              border: `1px solid ${appleTheme.colors.borderSubtle}`,
+              boxShadow: appleTheme.shadows.card,
               cursor: 'pointer',
+              transition: appleTheme.transitions.fast,
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.borderColor = appleTheme.colors.accent;
+              (e.currentTarget as HTMLElement).style.backgroundColor = appleTheme.colors.accentTint;
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.borderColor = appleTheme.colors.borderSubtle;
+              (e.currentTarget as HTMLElement).style.backgroundColor = appleTheme.colors.bgCard;
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               {tag.tagType === 'todo' ? (
                 tag.done ? (
-                  <CheckSquare size={16} color="#16a34a" />
+                  <CheckSquare size={16} color={appleTheme.colors.success} />
                 ) : (
-                  <Square size={16} color="#64748b" />
+                  <Square size={16} color={appleTheme.colors.labelTertiary} />
                 )
               ) : tag.tagType === 'important' ? (
-                <Star size={16} color="#eab308" fill="#eab308" />
+                <Star size={16} color="#ff9500" fill="#ff9500" />
               ) : (
-                <HelpCircle size={16} color="#a855f7" />
+                <HelpCircle size={16} color={appleTheme.colors.purple} />
               )}
               <span
                 style={{
                   fontSize: 13,
                   fontWeight: 500,
-                  color: tag.done ? '#94a3b8' : '#1e293b',
+                  color: tag.done ? appleTheme.colors.labelQuaternary : appleTheme.colors.labelPrimary,
                   textDecoration: tag.done ? 'line-through' : 'none',
+                  flex: 1,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
                 }}
               >
                 {tag.text || '(empty)'}
@@ -158,7 +184,7 @@ export const TagsSummaryPane: React.FC<TagsSummaryPaneProps> = ({
                 gap: 6,
                 marginTop: 6,
                 fontSize: 11,
-                color: '#64748b',
+                color: appleTheme.colors.labelSecondary,
               }}
             >
               <span
@@ -167,12 +193,12 @@ export const TagsSummaryPane: React.FC<TagsSummaryPaneProps> = ({
                   width: 8,
                   height: 8,
                   borderRadius: '50%',
-                  backgroundColor: tag.sectionColor || '#6366f1',
+                  backgroundColor: tag.sectionColor || appleTheme.colors.accent,
                 }}
               />
               <span>{tag.sectionTitle}</span>
               <span>•</span>
-              <span style={{ fontWeight: 500 }}>{tag.pageTitle}</span>
+              <span style={{ fontWeight: 500, color: appleTheme.colors.labelPrimary }}>{tag.pageTitle}</span>
             </div>
           </div>
         ))}
