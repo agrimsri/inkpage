@@ -1106,9 +1106,17 @@ const AppContent: React.FC = () => {
         {/* Full Microsoft OneNote Ribbon */}
         <Ribbon
           activeTab={activeTab}
-          onSelectTab={setActiveTab}
+          onSelectTab={(tab) => {
+            setActiveTab(tab);
+            if (tab === 'draw' && activeTool === 'select') {
+              setActiveTool('pen');
+            }
+          }}
           activeTool={activeTool}
-          onSelectTool={setActiveTool}
+          onSelectTool={(tool) => {
+            setActiveTool(tool);
+            setSelectedShape(null);
+          }}
           activeColor={activeColor}
           onSelectColor={setActiveColor}
           activeWidth={activeWidth}
@@ -1205,7 +1213,10 @@ const AppContent: React.FC = () => {
           onInsertDateTime={handleInsertDateTime}
           onApplyTemplate={handleApplyTemplate}
           selectedShape={selectedShape}
-          onSelectShape={setSelectedShape}
+          onSelectShape={(shape) => {
+            setSelectedShape(shape);
+            setActiveTool('select');
+          }}
           inkToShapeEnabled={inkToShapeEnabled}
           onToggleInkToShape={() => setInkToShapeEnabled((prev) => !prev)}
           rulerEnabled={rulerEnabled}

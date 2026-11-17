@@ -140,11 +140,18 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
           isPanningRef.current = false;
         }
       };
+      const handleBlur = () => {
+        isSpaceDownRef.current = false;
+        setIsSpaceDown(false);
+        isPanningRef.current = false;
+      };
       window.addEventListener("keydown", handleKeyDown);
       window.addEventListener("keyup", handleKeyUp);
+      window.addEventListener("blur", handleBlur);
       return () => {
         window.removeEventListener("keydown", handleKeyDown);
         window.removeEventListener("keyup", handleKeyUp);
+        window.removeEventListener("blur", handleBlur);
       };
     }, []);
 
@@ -1275,7 +1282,7 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
         <InkCanvas
           inkGroup={currentInkGroup}
           tool={
-            isSpaceDown || isSpaceDownRef.current || selectedShape
+            isSpaceDown || selectedShape
               ? "select"
               : tool === "pen" || tool === "highlighter" || tool === "eraser"
                 ? tool

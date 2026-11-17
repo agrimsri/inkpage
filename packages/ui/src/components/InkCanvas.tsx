@@ -51,26 +51,16 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
   const strokeBBoxesRef = useRef<Map<string, [number, number, number, number]>>(
     new Map(),
   );
-  const isSpaceDownRef = useRef<boolean>(false);
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.code === "Space") {
-        isSpaceDownRef.current = true;
-      }
-    };
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.code === "Space") {
-        isSpaceDownRef.current = false;
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keyup", handleKeyUp);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keyup", handleKeyUp);
-    };
-  }, []);
+  const isPointerContact = (e: React.PointerEvent | PointerEvent): boolean => {
+    if (e.pointerType === "touch") return true;
+    if (e.pointerType === "pen") {
+      // Stylus is active if pen tip pressure > 0.01 OR primary contact button is down
+      return e.pressure > 0.01 || (e.buttons & 1) !== 0;
+    }
+    // Mouse: primary button (left button) must be down
+    return (e.buttons & 1) !== 0;
+  };
 
   const getStrokeBBox = (stroke: Stroke): [number, number, number, number] => {
     let bbox = strokeBBoxesRef.current.get(stroke.id);
@@ -135,10 +125,16 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
     }
   }, [inkGroup.strokes]);
 
+  const lastCanvasDimRef = useRef<{ w: number; h: number }>({ w: 0, h: 0 });
   useEffect(() => {
-    // If the canvas was already rendered for this exact strokes array reference (from commitActiveStroke or eraseStrokeAt),
+    const dimChanged =
+      lastCanvasDimRef.current.w !== canvasWidth ||
+      lastCanvasDimRef.current.h !== canvasHeight;
+    lastCanvasDimRef.current = { w: canvasWidth, h: canvasHeight };
+
+    // If the canvas was already rendered for this exact strokes array reference and size didn't change,
     // skip the redundant clearRect and full redraw to keep drawing ultra-fast and lag-free!
-    if (lastRenderedStrokesRef.current === inkGroup.strokes) {
+    if (!dimChanged && lastRenderedStrokesRef.current === inkGroup.strokes) {
       return;
     }
 
@@ -174,7 +170,8 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
         }
       }
 
-      const updatedStrokes = [...inkGroupRef.current.strokes, finishedStroke];
+      const currentStrokes = inkGroupRef.current.strokes || [];
+      const updatedStrokes = [...currentStrokes, finishedStroke];
       inkGroupRef.current = {
         ...inkGroupRef.current,
         strokes: updatedStrokes,
@@ -192,8 +189,14 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
           const margin = Math.max((finishedStroke?.width || 4) * 2, 60);
           const cx = Math.max(0, Math.floor(dirty.minX - margin));
           const cy = Math.max(0, Math.floor(dirty.minY - margin));
-          const cw = Math.min(activeCanvas.width - cx, Math.ceil(dirty.maxX - dirty.minX + margin * 2));
-          const ch = Math.min(activeCanvas.height - cy, Math.ceil(dirty.maxY - dirty.minY + margin * 2));
+          const cw = Math.min(
+            activeCanvas.width - cx,
+            Math.ceil(dirty.maxX - dirty.minX + margin * 2),
+          );
+          const ch = Math.min(
+            activeCanvas.height - cy,
+            Math.ceil(dirty.maxY - dirty.minY + margin * 2),
+          );
           actCtx.clearRect(cx, cy, cw, ch);
         } else {
           actCtx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
@@ -206,17 +209,11 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (tool !== "pen" && tool !== "highlighter" && tool !== "eraser") return;
 
-    // Spacebar Hand / Pan Tool overrides inking: do not consume event so viewport pans
-    if (isSpaceDownRef.current) return;
+    // Right-click or middle-click should not draw
+    if (e.button === 1 || e.button === 2) return;
 
-    // Only respond to primary button / tip contact (0 = left mouse / pen tip / touch)
-    if (e.button !== 0) return;
-
-    // Prevent hovering stylus or unclicked mouse from starting drawing (buttons bit 0 must be active for mouse/pen)
-    if (e.pointerType !== 'touch' && (e.buttons & 1) === 0) return;
-
-    // Prevent hovering stylus in the air from triggering drawing (tip must contact digitizer with pressure > 0.01)
-    if (e.pointerType === 'pen' && e.pressure <= 0.01) return;
+    // Reject hovering stylus in the air and unclicked mouse
+    if (!isPointerContact(e)) return;
 
     // If a stroke was somehow still active, finalize it safely before starting the new one
     if (isDrawingRef.current) {
@@ -288,23 +285,10 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
 
   // Pointer Move: Ultra-high frequency updates directly to active Canvas context
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    // If Spacebar pressed or not actively drawing, stop drawing immediately
-    if (isSpaceDownRef.current) {
-      if (isDrawingRef.current) commitActiveStroke();
-      return;
-    }
-
     if (!isDrawingRef.current) return;
 
-    // Critical hover-drawing prevention:
-    // When stylus hovers above digitizer or mouse moves without being pressed:
-    // 1. (e.buttons & 1) === 0 (primary button/tip not pressed, or non-primary button pressed)
-    // 2. e.pointerType === 'pen' && e.pressure <= 0.01 (stylus tip lifted, even if in hover range)
-    const isHover =
-      (e.pointerType !== 'touch' && (e.buttons & 1) === 0) ||
-      (e.pointerType === 'pen' && e.pressure <= 0.01);
-
-    if (isHover) {
+    // Contact lost (stylus lifted into air or mouse button released)
+    if (!isPointerContact(e)) {
       commitActiveStroke();
       return;
     }
@@ -472,7 +456,7 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
       // Instantly redraw completed canvas without waiting for async React re-render
       const canvas = completedCanvasRef.current;
       if (canvas) {
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext("2d");
         if (ctx) {
           ctx.clearRect(0, 0, canvas.width, canvas.height);
           for (let i = 0; i < remaining.length; i++) {
@@ -525,11 +509,6 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
         onLostPointerCapture={handlePointerUp}
-        onPointerLeave={(e) => {
-          if (isDrawingRef.current && (e.buttons & 1) === 0) {
-            handlePointerUp(e);
-          }
-        }}
         style={{
           position: "absolute",
           left: 0,
