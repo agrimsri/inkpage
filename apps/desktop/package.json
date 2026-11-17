@@ -1,6 +1,10 @@
 {
   "name": "@inkpage/desktop",
   "version": "0.1.0",
+  "description": "Free, open-source, local-first note-taking app",
+  "homepage": "https://github.com/agrim-s/inkpage",
+  "author": "Inkpage Contributors",
+  "desktopName": "inkpage.desktop",
   "private": true,
   "main": "electron/main.js",
   "scripts": {
@@ -8,7 +12,12 @@
     "build": "vite build",
     "preview": "vite preview",
     "electron": "vite build && env -u ELECTRON_RUN_AS_NODE electron electron/main.js",
-    "electron:dev": "env -u ELECTRON_RUN_AS_NODE NODE_ENV=development electron electron/main.js"
+    "electron:dev": "env -u ELECTRON_RUN_AS_NODE NODE_ENV=development electron electron/main.js",
+    "package:dir": "electron-builder --dir",
+    "package:linux": "electron-builder --linux",
+    "package:win": "electron-builder --win",
+    "package:mac": "electron-builder --mac",
+    "package:all": "electron-builder -mwl"
   },
   "dependencies": {
     "@inkpage/format": "workspace:*",
@@ -23,6 +32,7 @@
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
     "electron": "^34.2.0",
+    "electron-builder": "^26.18.0",
     "typescript": "^5.7.0",
     "vite": "^6.1.0"
   }

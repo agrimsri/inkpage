@@ -110,7 +110,7 @@ async fn get_status(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     Json(StatusResponse {
         status: "ok",
         version: "0.1.0",
-        platform: "linux",
+        platform: std::env::consts::OS,
         data_dir: state.data_dir.display().to_string(),
     })
 }

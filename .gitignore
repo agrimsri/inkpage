@@ -1,9 +1,11 @@
 # Build outputs
 target/
 dist/
+dist-electron/
 out/
 build/
 node_modules/
+apps/desktop/resources/bin/
 
 # OS and editor files
 .DS_Store

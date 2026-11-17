@@ -6,23 +6,66 @@ const fs = require('fs');
 let mainWindow = null;
 let serverProcess = null;
 
-function startBackendServer() {
+function getBackendBinaryPath() {
   const isDev = !app.isPackaged;
-  const serverBinary = isDev
-    ? path.join(__dirname, '../../../target/debug/inkpage-server')
-    : path.join(process.resourcesPath, 'inkpage-server');
+  const exeName = process.platform === 'win32' ? 'inkpage-server.exe' : 'inkpage-server';
 
+  if (isDev) {
+    const candidatePaths = [
+      path.join(__dirname, '../../../target/release', exeName),
+      path.join(__dirname, '../../../target/debug', exeName),
+      path.join(__dirname, '../resources/bin', exeName),
+    ];
+    for (const p of candidatePaths) {
+      if (fs.existsSync(p)) return p;
+    }
+    return candidatePaths[0]; // fallback path for error message
+  }
+
+  // Packaged app: check process.resourcesPath bin directory, root, and macOS bundle directory
+  const candidatePaths = [
+    path.join(process.resourcesPath, 'bin', exeName),
+    path.join(process.resourcesPath, exeName),
+    path.join(process.resourcesPath, '..', 'MacOS', exeName),
+  ];
+  for (const p of candidatePaths) {
+    if (fs.existsSync(p)) return p;
+  }
+  return candidatePaths[0];
+}
+
+function startBackendServer() {
+  if (serverProcess) return;
+
+  const isDev = !app.isPackaged;
+  const serverBinary = getBackendBinaryPath();
   const dataDir = path.join(app.getPath('userData'), 'notebooks');
 
   try {
     if (fs.existsSync(serverBinary)) {
-      serverProcess = spawn(serverBinary, ['--port', '3888', '--data-dir', dataDir], {
-        stdio: 'ignore',
-        detached: false,
-      });
+      if (!isDev && process.platform !== 'win32') {
+        try {
+          fs.chmodSync(serverBinary, 0o755);
+        } catch (_) {}
+      }
+      serverProcess = spawn(
+        serverBinary,
+        ['--port', '3888', '--data-dir', dataDir, '--watch-stdin'],
+        {
+          stdio: ['pipe', 'ignore', 'ignore'],
+          windowsHide: true,
+          detached: false,
+        }
+      );
       serverProcess.on('error', (err) => {
         console.log('Backend server spawn error (will use in-memory fallback):', err.message);
+        serverProcess = null;
       });
+      serverProcess.on('exit', (code, signal) => {
+        console.log(`Backend server process exited (code=${code}, signal=${signal})`);
+        serverProcess = null;
+      });
+      console.log('Backend server started successfully from:', serverBinary);
     } else {
       console.log('Backend server binary not found at', serverBinary, '(in-memory fallback active)');
     }
@@ -31,8 +74,42 @@ function startBackendServer() {
   }
 }
 
+function stopBackendServer() {
+  if (serverProcess) {
+    const proc = serverProcess;
+    serverProcess = null;
+    try {
+      if (proc.stdin) {
+        try {
+          proc.stdin.end();
+        } catch (_) {}
+      }
+      if (process.platform === 'win32') {
+        proc.kill();
+      } else {
+        proc.kill('SIGTERM');
+      }
+    } catch (e) {
+      console.log('Error stopping backend server:', e.message);
+    }
+  }
+}
+
 function createWindow() {
-  mainWindow = new BrowserWindow({
+  const iconCandidates = [
+    path.join(__dirname, '../resources/icon.png'),
+    path.join(process.resourcesPath, 'icon.png'),
+    path.join(process.resourcesPath, 'resources', 'icon.png'),
+  ];
+  let windowIcon = null;
+  for (const ic of iconCandidates) {
+    if (fs.existsSync(ic)) {
+      windowIcon = ic;
+      break;
+    }
+  }
+
+  const windowOpts = {
     width: 1280,
     height: 840,
     minWidth: 900,
@@ -44,7 +121,12 @@ function createWindow() {
       nodeIntegration: false,
       enableWebSQL: false,
     },
-  });
+  };
+  if (windowIcon) {
+    windowOpts.icon = windowIcon;
+  }
+
+  mainWindow = new BrowserWindow(windowOpts);
 
   const indexPath = path.join(__dirname, '../dist/index.html');
   const devUrl = 'http://127.0.0.1:3000';
@@ -83,14 +165,29 @@ function createWindow() {
   });
 }
 
-app.whenReady().then(() => {
-  startBackendServer();
-  createWindow();
+// Single instance lock: prevent multiple concurrent instances and port collisions
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+if (!gotSingleInstanceLock) {
+  console.log('Another instance of Inkpage is already running. Quitting.');
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
   });
-});
+
+  app.whenReady().then(() => {
+    startBackendServer();
+    createWindow();
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+  });
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
@@ -98,8 +195,24 @@ app.on('window-all-closed', () => {
   }
 });
 
+app.on('before-quit', () => {
+  stopBackendServer();
+});
+
 app.on('will-quit', () => {
-  if (serverProcess) {
-    serverProcess.kill('SIGTERM');
-  }
+  stopBackendServer();
+});
+
+process.on('exit', () => {
+  stopBackendServer();
+});
+
+process.on('SIGINT', () => {
+  stopBackendServer();
+  app.quit();
+});
+
+process.on('SIGTERM', () => {
+  stopBackendServer();
+  app.quit();
 });

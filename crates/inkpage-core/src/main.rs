@@ -19,13 +19,17 @@ struct Args {
     /// Data directory for .inkbook notebooks
     #[arg(short = 'd', long = "data-dir", default_value = "./notebooks")]
     data_dir: PathBuf,
+
+    /// Automatically exit when stdin reaches EOF (used when spawned as an Electron child process)
+    #[arg(long = "watch-stdin")]
+    watch_stdin: bool,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
+    std::fs::create_dir_all(&args.data_dir)?;
     let data_dir = std::fs::canonicalize(&args.data_dir).unwrap_or(args.data_dir);
-    std::fs::create_dir_all(&data_dir)?;
 
     let db_path = data_dir.join(".inkpage_global_index.sqlite");
     let index = SearchIndex::open(&db_path)?;
@@ -145,7 +149,49 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Data directory: {}", data_dir.display());
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await?;
+    let watch_stdin = args.watch_stdin;
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal(watch_stdin))
+        .await?;
 
     Ok(())
+}
+
+async fn shutdown_signal(watch_stdin: bool) {
+    let ctrl_c = async {
+        let _ = tokio::signal::ctrl_c().await;
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        if let Ok(mut sig) = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            sig.recv().await;
+        }
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    let stdin_eof = async {
+        if watch_stdin {
+            use tokio::io::AsyncReadExt;
+            let mut stdin = tokio::io::stdin();
+            let mut buf = [0u8; 1];
+            loop {
+                match stdin.read(&mut buf).await {
+                    Ok(0) | Err(_) => break,
+                    Ok(_) => {},
+                }
+            }
+        } else {
+            std::future::pending::<()>().await;
+        }
+    };
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+        _ = stdin_eof => {},
+    }
+    println!("Inkpage server shutting down gracefully...");
 }

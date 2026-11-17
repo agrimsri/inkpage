@@ -1,13 +1,19 @@
 {
   "name": "inkpage-workspace",
   "version": "0.1.0",
+  "description": "Free, open-source, local-first note-taking app",
+  "homepage": "https://github.com/agrim-s/inkpage",
+  "author": "Inkpage Contributors",
   "private": true,
   "scripts": {
     "dev": "pnpm --filter @inkpage/desktop dev",
     "build": "pnpm --filter @inkpage/format build && pnpm --filter @inkpage/ui build && pnpm --filter @inkpage/desktop build",
-    "test": "pnpm -r test"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": ["electron", "esbuild"]
+    "test": "cargo test --workspace",
+    "prepare:backend": "node scripts/prepare-backend.mjs",
+    "package:dir": "pnpm build && pnpm prepare:backend && pnpm --filter @inkpage/desktop package:dir",
+    "package:linux": "pnpm build && pnpm prepare:backend && pnpm --filter @inkpage/desktop package:linux",
+    "package:win": "pnpm build && pnpm prepare:backend && pnpm --filter @inkpage/desktop package:win",
+    "package:mac": "pnpm build && pnpm prepare:backend && pnpm --filter @inkpage/desktop package:mac",
+    "dist": "pnpm build && pnpm prepare:backend && pnpm --filter @inkpage/desktop package:linux"
   }
 }

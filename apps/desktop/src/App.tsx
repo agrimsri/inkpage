@@ -154,7 +154,7 @@ const AppContent: React.FC = () => {
     fetchNotebooks();
   }, []);
 
-  const fetchNotebooks = async () => {
+  const fetchNotebooks = async (retries = 4, delay = 200) => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/notebooks`);
       if (res.ok) {
@@ -163,12 +163,15 @@ const AppContent: React.FC = () => {
         if (data.length > 0 && !activeNotebook) {
           selectNotebook(data[0]);
         }
-      } else {
-        fallbackToLocalDemo();
+        return;
       }
     } catch {
-      fallbackToLocalDemo();
+      if (retries > 0) {
+        setTimeout(() => fetchNotebooks(retries - 1, delay), delay);
+        return;
+      }
     }
+    fallbackToLocalDemo();
   };
 
   const fallbackToLocalDemo = () => {

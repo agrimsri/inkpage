@@ -1,0 +1,98 @@
+{
+  "appId": "org.inkpage.app",
+  "productName": "Inkpage",
+  "executableName": "inkpage",
+  "copyright": "Copyright © 2026 Inkpage Contributors",
+  "directories": {
+    "output": "dist-electron",
+    "buildResources": "resources"
+  },
+  "files": [
+    "dist/**/*",
+    "electron/**/*",
+    "resources/icon.png",
+    "package.json"
+  ],
+  "extraResources": [
+    {
+      "from": "resources/bin",
+      "to": "bin",
+      "filter": ["*"]
+    }
+  ],
+  "linux": {
+    "executableName": "inkpage",
+    "target": [
+      {
+        "target": "AppImage",
+        "arch": ["x64"]
+      },
+      {
+        "target": "deb",
+        "arch": ["x64"]
+      }
+    ],
+    "icon": "resources/icon.png",
+    "category": "Office",
+    "maintainer": "Inkpage Contributors <contributors@inkpage.org>",
+    "synopsis": "Free, open-source, local-first note-taking app",
+    "artifactName": "${productName}-${version}-linux-${arch}.${ext}"
+  },
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      },
+      {
+        "target": "portable",
+        "arch": ["x64"]
+      }
+    ],
+    "icon": "resources/icon.ico"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "Inkpage",
+    "artifactName": "${productName}-Setup-${version}-${arch}.${ext}"
+  },
+  "portable": {
+    "artifactName": "${productName}-Portable-${version}-${arch}.${ext}"
+  },
+  "mac": {
+    "target": [
+      {
+        "target": "dmg",
+        "arch": ["universal"]
+      },
+      {
+        "target": "zip",
+        "arch": ["universal"]
+      }
+    ],
+    "icon": "resources/icon.icns",
+    "category": "public.app-category.productivity",
+    "identity": null,
+    "hardenedRuntime": false,
+    "gatekeeperAssess": false,
+    "artifactName": "${productName}-${version}-mac-${arch}.${ext}"
+  },
+  "dmg": {
+    "title": "${productName} ${version}",
+    "contents": [
+      {
+        "x": 130,
+        "y": 220
+      },
+      {
+        "x": 410,
+        "y": 220,
+        "type": "link",
+        "path": "/Applications"
+      }
+    ]
+  }
+}
