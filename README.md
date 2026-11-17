@@ -1,10 +1,10 @@
 # Inkpage
 
-[![GitHub Release](https://img.shields.io/github/v/release/agrim-s/inkpage?include_prereleases&style=flat-square&color=indigo)](https://github.com/agrim-s/inkpage/releases)
-[![CI](https://img.shields.io/github/actions/workflow/status/agrim-s/inkpage/release.yml?branch=main&label=CI%2FCD&style=flat-square)](https://github.com/agrim-s/inkpage/actions)
-[![Linux](https://img.shields.io/badge/platform-Linux%20(.AppImage%2C%20.deb)-blue?style=flat-square&logo=linux)](https://github.com/agrim-s/inkpage/releases)
-[![Windows](https://img.shields.io/badge/platform-Windows%20(.exe)-blue?style=flat-square&logo=windows)](https://github.com/agrim-s/inkpage/releases)
-[![macOS](https://img.shields.io/badge/platform-macOS%20(.dmg)-blue?style=flat-square&logo=apple)](https://github.com/agrim-s/inkpage/releases)
+[![GitHub Release](https://img.shields.io/github/v/release/agrimsri/inkpage?include_prereleases&style=flat-square&color=indigo)](https://github.com/agrimsri/inkpage/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/agrimsri/inkpage/release.yml?branch=main&label=CI%2FCD&style=flat-square)](https://github.com/agrimsri/inkpage/actions)
+[![Linux](https://img.shields.io/badge/platform-Linux%20(.AppImage%2C%20.deb)-blue?style=flat-square&logo=linux)](https://github.com/agrimsri/inkpage/releases)
+[![Windows](https://img.shields.io/badge/platform-Windows%20(.exe)-blue?style=flat-square&logo=windows)](https://github.com/agrimsri/inkpage/releases)
+[![macOS](https://img.shields.io/badge/platform-macOS%20(.dmg)-blue?style=flat-square&logo=apple)](https://github.com/agrimsri/inkpage/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
 
 > A free, open-source, Linux-first OneNote-class note-taking app.
@@ -15,7 +15,7 @@ _Inkpage is a free, open-source, local-first notebook for Linux, Windows, and ma
 
 ## Download & Install
 
-Standalone installers are published on the **[GitHub Releases](https://github.com/agrim-s/inkpage/releases)** page.
+Standalone installers are published on the **[GitHub Releases](https://github.com/agrimsri/inkpage/releases)** page.
 
 > **Zero Dependencies Required:** Every installer is completely self-contained. The native Rust backend (`inkpage-server`) is bundled directly inside the application resources. End users **do not** need Rust, Node.js, or pnpm installed.
 
@@ -125,7 +125,7 @@ Pushes with version tags (`v*`) automatically trigger `.github/workflows/release
 2. Bundles the backend binary into the Electron app's `process.resourcesPath`.
 3. Packages installers for Linux (`.AppImage`, `.deb`), Windows (`.exe`), and macOS (`.dmg`).
 4. Generates cryptographic checksums (`SHA256SUMS.txt`).
-5. Publishes the assets directly to [GitHub Releases](https://github.com/agrim-s/inkpage/releases).
+5. Publishes the assets directly to [GitHub Releases](https://github.com/agrimsri/inkpage/releases).
 
 ```bash
 git tag v0.1.0
