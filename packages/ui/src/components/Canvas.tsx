@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type {
   Page,
   Item,
@@ -94,6 +94,58 @@ export const Canvas: React.FC<CanvasProps> = React.memo(({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const isPanningRef = useRef<boolean>(false);
   const panStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isSpaceDown, setIsSpaceDown] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement;
+      const isInput =
+        activeEl?.tagName === 'INPUT' ||
+        activeEl?.tagName === 'TEXTAREA' ||
+        (activeEl as HTMLElement)?.isContentEditable;
+      if (e.code === 'Space' && !e.repeat && !isInput) {
+        setIsSpaceDown(true);
+      }
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        setIsSpaceDown(false);
+        isPanningRef.current = false;
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
+
+  // Page background & dimensions
+  const pageBgColor = (!page.pageColor || page.pageColor === '#ffffff')
+    ? appleTheme.colors.bgCanvas
+    : page.pageColor;
+  const paperPreset = page.size?.preset || 'auto';
+  const sheetW = paperPreset === 'letter' ? 816 : paperPreset === 'a4' ? 794 : 0;
+  const sheetH = paperPreset === 'letter' ? 1056 : paperPreset === 'a4' ? 1123 : 0;
+  const sheetX = 80;
+  const sheetY = 50;
+  const ruleLineColor = (!page.background?.color || page.background.color === 'rgba(0, 0, 0, 0.13)')
+    ? 'var(--color-rule-line, rgba(0, 0, 0, 0.08))'
+    : page.background.color;
+
+  const getCanvasCoords = useCallback((clientX: number, clientY: number) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return { x: 0, y: 0 };
+    let x = (clientX - rect.left - pan.x) / zoom;
+    let y = (clientY - rect.top - pan.y) / zoom;
+    if (paperPreset !== 'auto') {
+      x -= sheetX;
+      y -= sheetY;
+    }
+    return { x, y };
+  }, [pan.x, pan.y, zoom, paperPreset]);
+
   const draggingItemRef = useRef<{
     id: string;
     startX: number;
@@ -118,6 +170,12 @@ export const Canvas: React.FC<CanvasProps> = React.memo(({
     currX: number;
     currY: number;
   } | null>(null);
+  const drawingShapeRef = useRef<{
+    startX: number;
+    startY: number;
+    currX: number;
+    currY: number;
+  } | null>(null);
 
   // Wheel zoom and pan
   const handleWheel = (e: React.WheelEvent) => {
@@ -135,32 +193,37 @@ export const Canvas: React.FC<CanvasProps> = React.memo(({
 
   // Canvas-level pointer events for panning, creating items & shapes
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    (e.nativeEvent as any).__handled = true;
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {}
+
     // If Space key is held or middle click, start panning
-    if (e.button === 1 || e.buttons === 4 || (e.button === 0 && e.shiftKey && !draggingItemRef.current && !selectedShape)) {
+    if (isSpaceDown || e.button === 1 || e.buttons === 4 || (e.button === 0 && e.shiftKey && !draggingItemRef.current && !selectedShape)) {
       isPanningRef.current = true;
       panStartRef.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
       return;
     }
 
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const canvasX = (e.clientX - rect.left - pan.x) / zoom;
-    const canvasY = (e.clientY - rect.top - pan.y) / zoom;
+    const { x: canvasX, y: canvasY } = getCanvasCoords(e.clientX, e.clientY);
 
     // Drawing a shape
     if (selectedShape) {
-      setDrawingShape({
+      const shapeData = {
         startX: canvasX,
         startY: canvasY,
         currX: canvasX,
         currY: canvasY,
-      });
+      };
+      drawingShapeRef.current = shapeData;
+      setDrawingShape(shapeData);
       return;
     }
 
     // Clicking on empty canvas
     const isBackground =
       e.target === containerRef.current ||
+      (e.target as HTMLElement).classList.contains('canvas-viewport') ||
       (e.target as HTMLElement).classList.contains('canvas-background') ||
       (e.target as HTMLElement).classList.contains('canvas-paper-sheet');
 
@@ -206,18 +269,13 @@ export const Canvas: React.FC<CanvasProps> = React.memo(({
       return;
     }
 
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const canvasX = (e.clientX - rect.left - pan.x) / zoom;
-    const canvasY = (e.clientY - rect.top - pan.y) / zoom;
+    const { x: canvasX, y: canvasY } = getCanvasCoords(e.clientX, e.clientY);
 
     // Update active shape drawing preview
-    if (drawingShape) {
-      setDrawingShape({
-        ...drawingShape,
-        currX: canvasX,
-        currY: canvasY,
-      });
+    if (drawingShapeRef.current) {
+      drawingShapeRef.current.currX = canvasX;
+      drawingShapeRef.current.currY = canvasY;
+      setDrawingShape({ ...drawingShapeRef.current });
       return;
     }
 
@@ -231,8 +289,8 @@ export const Canvas: React.FC<CanvasProps> = React.memo(({
         if (item.id === itemId) {
           return {
             ...item,
-            x: Math.max(10, Math.round(draggingItemRef.current!.initX + dx)),
-            y: Math.max(10, Math.round(draggingItemRef.current!.initY + dy)),
+            x: Math.round(draggingItemRef.current!.initX + dx),
+            y: Math.round(draggingItemRef.current!.initY + dy),
           };
         }
         return item;
@@ -265,14 +323,22 @@ export const Canvas: React.FC<CanvasProps> = React.memo(({
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    (e.nativeEvent as any).__handled = true;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {}
     isPanningRef.current = false;
 
     // Finalize shape creation
-    if (drawingShape && selectedShape) {
-      const x = Math.min(drawingShape.startX, drawingShape.currX);
-      const y = Math.min(drawingShape.startY, drawingShape.currY);
-      const w = Math.max(24, Math.abs(drawingShape.currX - drawingShape.startX));
-      const h = Math.max(24, Math.abs(drawingShape.currY - drawingShape.startY));
+    const currentShape = drawingShapeRef.current;
+    if (currentShape && selectedShape) {
+      drawingShapeRef.current = null;
+      setDrawingShape(null);
+
+      const x = Math.min(currentShape.startX, currentShape.currX);
+      const y = Math.min(currentShape.startY, currentShape.currY);
+      const w = Math.max(24, Math.abs(currentShape.currX - currentShape.startX));
+      const h = Math.max(24, Math.abs(currentShape.currY - currentShape.startY));
 
       const newShape: ShapeItem = {
         id: `shape_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
@@ -282,7 +348,7 @@ export const Canvas: React.FC<CanvasProps> = React.memo(({
         y: Math.round(y),
         w: Math.round(w),
         h: Math.round(h),
-        z: (page.items.length || 0) + 1,
+        z: 5,
         strokeColor: activeColor,
         strokeWidth: activeWidth || 2,
         fillColor: 'transparent',
@@ -292,7 +358,6 @@ export const Canvas: React.FC<CanvasProps> = React.memo(({
         ...page,
         items: [...page.items, newShape],
       });
-      setDrawingShape(null);
       if (onClearShape) onClearShape();
       return;
     }
@@ -370,13 +435,29 @@ export const Canvas: React.FC<CanvasProps> = React.memo(({
     });
   };
 
-  const deleteItem = (itemId: string) => {
+  const deleteItem = useCallback((itemId: string) => {
     onUpdatePage({
       ...page,
       items: page.items.filter((i) => i.id !== itemId),
     });
     if (selectedItemId === itemId) setSelectedItemId(null);
-  };
+  }, [page, selectedItemId, onUpdatePage]);
+
+  const handleErasePoint = useCallback((x: number, y: number) => {
+    const hitMargin = 16;
+    const hit = page.items.find((item) => {
+      if (item.kind !== 'shape') return false;
+      return (
+        x >= item.x - hitMargin &&
+        x <= item.x + item.w + hitMargin &&
+        y >= item.y - hitMargin &&
+        y <= item.y + item.h + hitMargin
+      );
+    });
+    if (hit) {
+      deleteItem(hit.id);
+    }
+  }, [page.items, deleteItem]);
 
   // Table Helpers
   const handleTableCellUpdate = (tableId: string, row: number, col: number, text: string) => {
@@ -426,31 +507,16 @@ export const Canvas: React.FC<CanvasProps> = React.memo(({
     onUpdatePage({ ...page, items: updated });
   };
 
-  // Page background & dimensions
-  const pageBgColor = (!page.pageColor || page.pageColor === '#ffffff')
-    ? appleTheme.colors.bgCanvas
-    : page.pageColor;
-  const paperPreset = page.size?.preset || 'auto';
-  const paperWidth = paperPreset === 'letter' ? 816 : paperPreset === 'a4' ? 794 : '100%';
-  const paperMinHeight = paperPreset === 'letter' ? 1056 : paperPreset === 'a4' ? 1123 : '100%';
-  const ruleLineColor = (!page.background?.color || page.background.color === 'rgba(0, 0, 0, 0.13)')
-    ? 'var(--color-rule-line, rgba(0, 0, 0, 0.08))'
-    : page.background.color;
-
   const handleDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const isBackground =
       e.target === containerRef.current ||
+      (e.target as HTMLElement).classList.contains('canvas-viewport') ||
       (e.target as HTMLElement).classList.contains('canvas-background') ||
       (e.target as HTMLElement).classList.contains('canvas-paper-sheet');
 
     if (!isBackground) return;
 
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const screenX = e.clientX - rect.left;
-    const screenY = e.clientY - rect.top;
-    const canvasX = (screenX - pan.x) / zoom;
-    const canvasY = (screenY - pan.y) / zoom;
+    const { x: canvasX, y: canvasY } = getCanvasCoords(e.clientX, e.clientY);
 
     const newContainer: Container = {
       id: `container_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -479,182 +545,112 @@ export const Canvas: React.FC<CanvasProps> = React.memo(({
     setSelectedItemId(newContainer.id);
   };
 
-  return (
-    <div
-      ref={containerRef}
-      className="canvas-viewport"
-      onWheel={handleWheel}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onDoubleClick={handleDoubleClick}
-      style={{
-        position: 'relative',
-        width: '100%',
-        height: '100%',
-        overflow: 'hidden',
-        backgroundColor: appleTheme.colors.bgWindow,
-        cursor: selectedShape
-          ? 'crosshair'
-          : tool === 'text'
-          ? 'text'
-          : isPanningRef.current
-          ? 'grabbing'
-          : 'default',
-        userSelect: 'none',
-      }}
-    >
-      {/* 2D Infinite Canvas Transform Layer */}
-      <div
-        className="canvas-background"
-        style={{
-          position: 'absolute',
-          left: 0,
-          top: 0,
-          width: '100%',
-          height: '100%',
-          transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-          transformOrigin: '0 0',
-        }}
-      >
-        {/* Paper Sheet Representation */}
-        <div
-          className="canvas-paper-sheet"
-          style={{
-            position: 'relative',
-            width: paperWidth,
-            minHeight: paperMinHeight,
-            minWidth: 1600,
-            backgroundColor: pageBgColor,
-            boxShadow: paperPreset !== 'auto' ? '0 10px 40px rgba(0,0,0,0.08)' : 'none',
-            border: paperPreset !== 'auto' ? `1px solid ${appleTheme.colors.borderMedium}` : 'none',
-            backgroundImage:
-              page.background?.kind === 'rule'
-                ? `linear-gradient(${ruleLineColor} 1px, transparent 1px)`
-                : page.background?.kind === 'grid'
-                ? `radial-gradient(${ruleLineColor} 1px, transparent 1px)`
-                : 'none',
-            backgroundSize:
-              page.background?.kind === 'rule'
-                ? `100% ${page.background.spacing || 28}px`
-                : `${page.background?.spacing || 24}px ${page.background?.spacing || 24}px`,
-          }}
-        >
-          {/* Vector Ink Canvas Layer */}
-          <InkCanvas
-            inkGroup={currentInkGroup}
-            tool={tool === 'pen' || tool === 'highlighter' || tool === 'eraser' ? tool : 'select'}
-            color={activeColor}
-            width={activeWidth}
-            zoom={zoom}
-            pan={pan}
-            onUpdateStrokes={handleUpdateStrokes}
-            onRecordMetric={onRecordMetric}
-          />
+  const renderCanvasContent = (canvasW?: number, canvasH?: number) => (
+    <>
+      {/* Render Canvas Items */}
+      {page.items.map((item) => {
+        if (item.kind === 'ink') return null;
+        const isSelected = selectedItemId === item.id;
+        const isShape = item.kind === 'shape';
 
-          {/* Render Active Shape Preview when drawing */}
-          {drawingShape && selectedShape && (
-            <div
-              style={{
-                position: 'absolute',
-                left: Math.min(drawingShape.startX, drawingShape.currX),
-                top: Math.min(drawingShape.startY, drawingShape.currY),
-                width: Math.abs(drawingShape.currX - drawingShape.startX),
-                height: Math.abs(drawingShape.currY - drawingShape.startY),
-                border: `2px dashed ${activeColor}`,
-                pointerEvents: 'none',
-                zIndex: 999,
-              }}
-            />
-          )}
-
-          {/* Render Canvas Items */}
-          {page.items.map((item) => {
-            if (item.kind === 'ink') return null;
-            const isSelected = selectedItemId === item.id;
-
-            return (
+        return (
+          <div
+            key={item.id}
+            style={{
+              position: 'absolute',
+              left: item.x,
+              top: item.y,
+              width: item.w,
+              height: isShape ? item.h : undefined,
+              minHeight: isShape ? undefined : item.h,
+              zIndex: isShape ? 5 : item.z || 10,
+              borderRadius: isShape ? 0 : appleTheme.radii.lg,
+              border: isShape
+                ? isSelected && tool === 'select'
+                  ? `1px dashed ${appleTheme.colors.accent}`
+                  : 'none'
+                : isSelected
+                ? `1.5px solid ${appleTheme.colors.accent}`
+                : '1px solid transparent',
+              backgroundColor: isShape ? 'transparent' : isSelected ? appleTheme.colors.bgCanvas : 'transparent',
+              boxShadow: isShape ? 'none' : isSelected ? appleTheme.shadows.card : 'none',
+              transition: 'border-color 0.15s, box-shadow 0.15s',
+              fontFamily: appleTheme.fonts.sans,
+              pointerEvents: isShape
+                ? tool === 'select'
+                  ? 'auto'
+                  : 'none'
+                : 'auto',
+            }}
+            onClick={(e) => {
+              if (tool === 'select') {
+                e.stopPropagation();
+                setSelectedItemId(item.id);
+              }
+            }}
+          >
+            {/* OneNote Container Anatomy: Top Gray Move Handle Bar */}
+            {(!isShape || (tool === 'select' && isSelected)) && (
               <div
-                key={item.id}
-                style={{
-                  position: 'absolute',
-                  left: item.x,
-                  top: item.y,
-                  width: item.w,
-                  minHeight: item.h,
-                  zIndex: item.z || 1,
-                  borderRadius: appleTheme.radii.lg,
-                  border: isSelected ? `1.5px solid ${appleTheme.colors.accent}` : '1px solid transparent',
-                  backgroundColor: isSelected ? appleTheme.colors.bgCanvas : 'transparent',
-                  boxShadow: isSelected ? appleTheme.shadows.card : 'none',
-                  transition: 'border-color 0.15s, box-shadow 0.15s',
-                  fontFamily: appleTheme.fonts.sans,
-                }}
-                onClick={(e) => {
+                className="container-move-bar"
+                onPointerDown={(e) => {
                   e.stopPropagation();
-                  setSelectedItemId(item.id);
+                  draggingItemRef.current = {
+                    id: item.id,
+                    startX: e.clientX,
+                    startY: e.clientY,
+                    initX: item.x,
+                    initY: item.y,
+                    isShift: e.shiftKey,
+                  };
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '4px 10px',
+                  backgroundColor: isSelected ? appleTheme.colors.bgSubtle : 'transparent',
+                  borderTopLeftRadius: appleTheme.radii.lg - 1, // calculated nested radius
+                  borderTopRightRadius: appleTheme.radii.lg - 1,
+                  cursor: 'grab',
+                  opacity: isSelected ? 1 : 0,
+                  transition: 'opacity 0.15s',
                 }}
               >
-                {/* OneNote Container Anatomy: Top Gray Move Handle Bar */}
-                <div
-                  className="container-move-bar"
-                  onPointerDown={(e) => {
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: appleTheme.colors.labelSecondary }}>
+                  <GripHorizontal size={14} />
+                  <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'capitalize', letterSpacing: '0.01em' }}>
+                    {item.kind}
+                  </span>
+                </div>
+                <button
+                  onClick={(e) => {
                     e.stopPropagation();
-                    draggingItemRef.current = {
-                      id: item.id,
-                      startX: e.clientX,
-                      startY: e.clientY,
-                      initX: item.x,
-                      initY: item.y,
-                      isShift: e.shiftKey,
-                    };
+                    deleteItem(item.id);
                   }}
                   style={{
+                    border: 'none',
+                    background: 'none',
+                    cursor: 'pointer',
+                    color: appleTheme.colors.labelTertiary,
+                    padding: 2,
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '4px 10px',
-                    backgroundColor: isSelected ? appleTheme.colors.bgSubtle : 'transparent',
-                    borderTopLeftRadius: appleTheme.radii.lg - 1, // calculated nested radius
-                    borderTopRightRadius: appleTheme.radii.lg - 1,
-                    cursor: 'grab',
-                    opacity: isSelected ? 1 : 0,
-                    transition: 'opacity 0.15s',
+                    justifyContent: 'center',
+                    borderRadius: appleTheme.radii.xs,
+                    transition: appleTheme.transitions.fast,
                   }}
+                  onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = appleTheme.colors.destructive)}
+                  onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = appleTheme.colors.labelTertiary)}
+                  title="Delete Item"
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: appleTheme.colors.labelSecondary }}>
-                    <GripHorizontal size={14} />
-                    <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'capitalize', letterSpacing: '0.01em' }}>
-                      {item.kind}
-                    </span>
-                  </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      deleteItem(item.id);
-                    }}
-                    style={{
-                      border: 'none',
-                      background: 'none',
-                      cursor: 'pointer',
-                      color: appleTheme.colors.labelTertiary,
-                      padding: 2,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      borderRadius: appleTheme.radii.xs,
-                      transition: appleTheme.transitions.fast,
-                    }}
-                    onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.color = appleTheme.colors.destructive)}
-                    onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.color = appleTheme.colors.labelTertiary)}
-                    title="Delete Item"
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                </div>
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            )}
 
-                {/* Item Content Rendering */}
-                <div style={{ padding: '4px 8px' }}>
+            {/* Item Content Rendering */}
+            <div style={{ padding: isShape ? 0 : '4px 8px', width: '100%', height: isShape ? '100%' : 'auto' }}>
                   {item.kind === 'container' && (
                     <OutlineEditor
                       container={item as Container}
@@ -1022,7 +1018,7 @@ export const Canvas: React.FC<CanvasProps> = React.memo(({
                 </div>
 
                 {/* OneNote Container Anatomy: Right Sizing Handle Strip */}
-                {isSelected && (
+                {isSelected && tool === 'select' && !isShape && (
                   <div
                     onPointerDown={(e) => {
                       e.stopPropagation();
@@ -1049,7 +1045,7 @@ export const Canvas: React.FC<CanvasProps> = React.memo(({
                 )}
 
                 {/* Bottom-Right Corner Resize Handle */}
-                {isSelected && (
+                {isSelected && tool === 'select' && (
                   <div
                     onPointerDown={(e) => {
                       e.stopPropagation();
@@ -1079,7 +1075,135 @@ export const Canvas: React.FC<CanvasProps> = React.memo(({
               </div>
             );
           })}
-        </div>
+
+          {/* Vector Ink Canvas Layer (zIndex: 20 renders ON TOP of shapes) */}
+          <InkCanvas
+            inkGroup={currentInkGroup}
+            tool={selectedShape ? 'select' : (tool === 'pen' || tool === 'highlighter' || tool === 'eraser' ? tool : 'select')}
+            color={activeColor}
+            width={activeWidth}
+            zoom={zoom}
+            pan={pan}
+            canvasWidth={canvasW}
+            canvasHeight={canvasH}
+            onUpdateStrokes={handleUpdateStrokes}
+            onErasePoint={handleErasePoint}
+            onRecordMetric={onRecordMetric}
+          />
+
+          {/* Render Active Shape Preview when drawing */}
+          {drawingShape && selectedShape && (
+            <div
+              style={{
+                position: 'absolute',
+                left: Math.min(drawingShape.startX, drawingShape.currX),
+                top: Math.min(drawingShape.startY, drawingShape.currY),
+                width: Math.abs(drawingShape.currX - drawingShape.startX),
+                height: Math.abs(drawingShape.currY - drawingShape.startY),
+                border: `2px dashed ${activeColor}`,
+                pointerEvents: 'none',
+                zIndex: 999,
+              }}
+            />
+          )}
+        </>
+      );
+
+  return (
+    <div
+      ref={containerRef}
+      className="canvas-viewport"
+      onWheel={handleWheel}
+      onPointerDown={handlePointerDown}
+      onMouseDown={(e) => {
+        if ((e.nativeEvent as any).__handled) return;
+        handlePointerDown(e as any);
+      }}
+      onPointerMove={handlePointerMove}
+      onMouseMove={(e) => {
+        if ((e.nativeEvent as any).__handled) return;
+        handlePointerMove(e as any);
+      }}
+      onPointerUp={handlePointerUp}
+      onMouseUp={(e) => {
+        if ((e.nativeEvent as any).__handled) return;
+        handlePointerUp(e as any);
+      }}
+      onDoubleClick={handleDoubleClick}
+      style={{
+        position: 'relative',
+        width: '100%',
+        height: '100%',
+        overflow: 'hidden',
+        backgroundColor: paperPreset === 'auto' ? pageBgColor : appleTheme.colors.bgWindow,
+        backgroundImage:
+          paperPreset === 'auto'
+            ? page.background?.kind === 'rule'
+              ? `linear-gradient(${ruleLineColor} 1px, transparent 1px)`
+              : page.background?.kind === 'grid'
+              ? `radial-gradient(${ruleLineColor} 1.2px, transparent 1.2px)`
+              : 'none'
+            : 'none',
+        backgroundPosition: `${pan.x}px ${pan.y}px`,
+        backgroundSize:
+          page.background?.kind === 'rule'
+            ? `100% ${(page.background.spacing || 28) * zoom}px`
+            : `${(page.background?.spacing || 24) * zoom}px ${(page.background?.spacing || 24) * zoom}px`,
+        cursor: isSpaceDown
+          ? isPanningRef.current ? 'grabbing' : 'grab'
+          : selectedShape
+          ? 'crosshair'
+          : tool === 'text'
+          ? 'text'
+          : isPanningRef.current
+          ? 'grabbing'
+          : 'default',
+        userSelect: 'none',
+      }}
+    >
+      {/* 2D Infinite Canvas Transform Layer */}
+      <div
+        className="canvas-background"
+        style={{
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          width: '100%',
+          height: '100%',
+          transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+          transformOrigin: '0 0',
+        }}
+      >
+        {paperPreset === 'auto' ? (
+          renderCanvasContent()
+        ) : (
+          <div
+            className="canvas-paper-sheet"
+            style={{
+              position: 'absolute',
+              left: sheetX,
+              top: sheetY,
+              width: sheetW,
+              height: sheetH,
+              backgroundColor: pageBgColor,
+              boxShadow: '0 12px 36px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06)',
+              border: `1px solid ${appleTheme.colors.borderMedium}`,
+              borderRadius: 4,
+              backgroundImage:
+                page.background?.kind === 'rule'
+                  ? `linear-gradient(${ruleLineColor} 1px, transparent 1px)`
+                  : page.background?.kind === 'grid'
+                  ? `radial-gradient(${ruleLineColor} 1px, transparent 1px)`
+                  : 'none',
+              backgroundSize:
+                page.background?.kind === 'rule'
+                  ? `100% ${page.background.spacing || 28}px`
+                  : `${page.background?.spacing || 24}px ${page.background?.spacing || 24}px`,
+            }}
+          >
+            {renderCanvasContent(sheetW, sheetH)}
+          </div>
+        )}
       </div>
 
       {/* On-screen Virtual Ruler */}

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { ToolType } from './ToolPalette';
 import type { ShapeType } from '@inkpage/format';
 import { appleTheme, appleStyles, useTheme } from '../theme';
@@ -216,11 +216,18 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
   const penColors = isDark ? DARK_PEN_COLORS : LIGHT_PEN_COLORS;
   const [showTablePicker, setShowTablePicker] = useState(false);
   const [hoverGrid, setHoverGrid] = useState<{ r: number; c: number }>({ r: 3, c: 3 });
-  const [showTagsMenu, setShowTagsMenu] = useState(false);
-  const [showColorMenu, setShowColorMenu] = useState(false);
   const [showPageColorMenu, setShowPageColorMenu] = useState(false);
   const [showRuleMenu, setShowRuleMenu] = useState(false);
-  const [showTemplatesMenu, setShowTemplatesMenu] = useState(false);
+
+  useEffect(() => {
+    const handleGlobalClick = () => {
+      setShowTablePicker(false);
+      setShowPageColorMenu(false);
+      setShowRuleMenu(false);
+    };
+    window.addEventListener('click', handleGlobalClick);
+    return () => window.removeEventListener('click', handleGlobalClick);
+  }, []);
 
   return (
     <div
@@ -232,6 +239,9 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
         userSelect: 'none',
         boxShadow: appleTheme.shadows.subtle,
         fontFamily: appleTheme.fonts.sans,
+        position: 'relative',
+        zIndex: 100,
+        overflow: 'visible',
       }}
     >
       {/* 1. Ribbon Tab Headers (macOS Unified Toolbar Style) */}
@@ -324,7 +334,8 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
           gap: 12,
           minHeight: 56,
           backgroundColor: appleTheme.colors.bgCanvas,
-          overflowX: 'auto',
+          overflow: 'visible',
+          position: 'relative',
         }}
       >
         {/* ==================== HOME TAB ==================== */}
@@ -560,7 +571,10 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
             <RibbonGroup title="Table">
               <div style={{ position: 'relative' }}>
                 <button
-                  onClick={() => setShowTablePicker(!showTablePicker)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowTablePicker(!showTablePicker);
+                  }}
                   style={actionButtonStyle}
                 >
                   <TableIcon size={16} color={appleTheme.colors.accent} />
@@ -571,10 +585,12 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
                 {/* 10x8 Table Hover Matrix */}
                 {showTablePicker && (
                   <div
+                    onClick={(e) => e.stopPropagation()}
                     style={{
                       ...appleStyles.popoverCard,
                       top: 36,
                       left: 0,
+                      zIndex: 1000,
                     }}
                   >
                     <div style={{ fontSize: 11, fontWeight: 600, color: appleTheme.colors.labelSecondary, marginBottom: 8, fontVariantNumeric: 'tabular-nums' }}>
@@ -902,7 +918,10 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
               {/* Page Color */}
               <div style={{ position: 'relative' }}>
                 <button
-                  onClick={() => setShowPageColorMenu(!showPageColorMenu)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowPageColorMenu(!showPageColorMenu);
+                  }}
                   style={actionButtonStyle}
                 >
                   <Palette size={16} color={appleTheme.colors.accent} />
@@ -911,7 +930,7 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
                 </button>
 
                 {showPageColorMenu && (
-                  <div style={dropdownStyle}>
+                  <div onClick={(e) => e.stopPropagation()} style={{ ...dropdownStyle, zIndex: 1000 }}>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 24px)', gap: 6 }}>
                       {PASTEL_PAGE_COLORS.map((p) => (
                         <div
@@ -939,14 +958,20 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
 
               {/* Rule Lines */}
               <div style={{ position: 'relative' }}>
-                <button onClick={() => setShowRuleMenu(!showRuleMenu)} style={actionButtonStyle}>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowRuleMenu(!showRuleMenu);
+                  }}
+                  style={actionButtonStyle}
+                >
                   <LayoutTemplate size={16} color={appleTheme.colors.labelSecondary} />
                   <span>Rule Lines</span>
                   <ChevronDown size={12} />
                 </button>
 
                 {showRuleMenu && (
-                  <div style={{ ...dropdownStyle, width: 180 }}>
+                  <div onClick={(e) => e.stopPropagation()} style={{ ...dropdownStyle, width: 180, zIndex: 1000 }}>
                     <div style={{ fontSize: 11, fontWeight: 700, color: appleTheme.colors.labelSecondary, marginBottom: 4 }}>
                       Rule Spacing
                     </div>
@@ -1009,13 +1034,6 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
                 <option value="letter">Letter (8.5 × 11 in)</option>
                 <option value="a4">A4 Paper</option>
               </select>
-            </RibbonGroup>
-
-            <Divider />
-
-            {/* Appearance / Theme */}
-            <RibbonGroup title="Appearance">
-              <ThemeSwitcher size="sm" />
             </RibbonGroup>
 
             <Divider />

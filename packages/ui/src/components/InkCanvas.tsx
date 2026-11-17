@@ -9,7 +9,10 @@ export interface InkCanvasProps {
   width: number;
   zoom: number;
   pan: { x: number; y: number };
+  canvasWidth?: number;
+  canvasHeight?: number;
   onUpdateStrokes: (strokes: Stroke[]) => void;
+  onErasePoint?: (x: number, y: number) => void;
   onRecordMetric?: (latency: number, pointerType: string, pressure: number, coalesced: number) => void;
 }
 
@@ -19,7 +22,10 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
   color,
   width,
   zoom,
+  canvasWidth: propCanvasWidth,
+  canvasHeight: propCanvasHeight,
   onUpdateStrokes,
+  onErasePoint,
   onRecordMetric,
 }) => {
   // Double-buffering canvases:
@@ -58,8 +64,22 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
     return bbox;
   };
 
-  const canvasWidth = Math.max(inkGroup.w || 3200, 3200);
-  const canvasHeight = Math.max(inkGroup.h || 2400, 2400);
+  let dynamicMaxW = 8000;
+  let dynamicMaxH = 8000;
+  if (!propCanvasWidth && inkGroup.strokes) {
+    for (let i = 0; i < inkGroup.strokes.length; i++) {
+      const s = inkGroup.strokes[i];
+      if (s.pts) {
+        for (let j = 0; j < s.pts.length; j++) {
+          if (s.pts[j][0] > dynamicMaxW - 600) dynamicMaxW = Math.ceil(s.pts[j][0] + 2000);
+          if (s.pts[j][1] > dynamicMaxH - 600) dynamicMaxH = Math.ceil(s.pts[j][1] + 2000);
+        }
+      }
+    }
+  }
+
+  const canvasWidth = propCanvasWidth || dynamicMaxW;
+  const canvasHeight = propCanvasHeight || dynamicMaxH;
 
   // Redraw all completed strokes onto the background canvas
   const redrawCompletedStrokes = useCallback(() => {
@@ -248,6 +268,10 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
 
   // Optimized Stroke Eraser with AABB pre-filtering and 18px radius collision
   const eraseStrokeAt = (x: number, y: number) => {
+    if (onErasePoint) {
+      onErasePoint(x, y);
+    }
+
     const threshold = 18;
     const thresholdSq = threshold * threshold;
     const remaining = inkGroup.strokes.filter((stroke) => {
@@ -283,7 +307,8 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
         top: inkGroup.y || 0,
         width: canvasWidth,
         height: canvasHeight,
-        pointerEvents: tool === 'select' ? 'none' : 'auto',
+        zIndex: 20,
+        pointerEvents: (tool === 'pen' || tool === 'highlighter' || tool === 'eraser') ? 'auto' : 'none',
       }}
     >
       {/* Background Layer: All Completed Saved Strokes */}

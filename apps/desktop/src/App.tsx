@@ -1274,6 +1274,8 @@ const AppContent: React.FC = () => {
               boxSizing: 'border-box',
               width: '100%',
               flexShrink: 0,
+              position: 'relative',
+              zIndex: 10,
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 14, flex: 1, minWidth: 0, marginRight: 16 }}>
