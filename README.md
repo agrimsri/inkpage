@@ -11,6 +11,12 @@
 
 Inkpage is a lightweight, distraction-free digital notebook for **Linux, Windows, and macOS**. It provides the freeform flexibility you love from tools like Microsoft OneNote—an infinite 2D canvas where you can type anywhere, sketch with a pressure-sensitive pen, organize notebooks, sections, and pages, and import your existing OneNote archives—while storing everything as plain, open files on your own computer with zero telemetry or subscription fees.
 
+<div align="center">
+  <br />
+  <img src="https://github.com/agrimsri/inkpage/releases/download/v0.1.0/inkpage-dark-ink.png" alt="Inkpage Dark Mode with Vector Stylus Inking" width="900" style="max-width: 100%; border-radius: 8px; box-shadow: 0 8px 30px rgba(0,0,0,0.3);" />
+  <p><em>Pressure-sensitive vector inking, rule lines, freeform containers, and Apple-inspired dark mode.</em></p>
+</div>
+
 ---
 
 ## Downloads & Quick Install
@@ -56,6 +62,11 @@ Pre-compiled standalone installers are available on the **[Latest GitHub Release
 ## Core Features
 
 - **Infinite Freeform 2D Canvas**: Click anywhere to type notes, arrange movable containers, resize text boxes, and pan across unlimited positive and negative space with rule lines or soft grid paper.
+<div align="center">
+  <img src="https://github.com/agrimsri/inkpage/releases/download/v0.1.0/inkpage-dark-canvas.png" alt="Freeform Canvas and Note Containers" width="850" style="max-width: 100%; border-radius: 6px;" />
+  <p><em>Click anywhere to type, movable and resizable note boxes, and interactive task tags.</em></p>
+</div>
+
 - **First-Class Stylus & Digital Inking**:
   - Pressure-sensitive pen with natural calligraphic dynamics powered by `perfect-freehand`.
   - Semi-transparent highlighter with smooth layer blending.
@@ -66,6 +77,10 @@ Pre-compiled standalone installers are available on the **[Latest GitHub Release
   - Refined typography and soft contrast designed with human interface guidelines.
   - Native **Dark Theme**, **Light Theme**, and automatic system appearance switching.
   - Collapsible notebook, section, and page panes to maximize your writing surface.
+<div align="center">
+  <img src="https://github.com/agrimsri/inkpage/releases/download/v0.1.0/inkpage-light-theme.png" alt="Inkpage Light Theme" width="850" style="max-width: 100%; border-radius: 6px;" />
+  <p><em>Clean Apple-style light theme with collapsible ribbon and section navigation.</em></p>
+</div>
 - **Offline OneNote Importer**:
   - Direct offline import of `.one` section files, `.onetoc2` notebooks, `.onepkg` packages, and OneDrive ZIP archives.
   - Converts ink strokes, formatting, hierarchical sections, and embedded media into open standards.
