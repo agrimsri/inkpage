@@ -121,6 +121,7 @@ export interface RibbonProps {
   onApplyHeading: (level: number) => void;
   onApplyTag: (tagType: string) => void;
   // Insert Actions
+  onPaste?: () => void;
   onInsertTextBox?: () => void;
   onInsertSpace: () => void;
   onInsertTable: (rows: number, cols: number) => void;
@@ -361,6 +362,14 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
                 <MousePointer size={16} />
                 <span>Select</span>
               </button>
+              <button
+                onClick={() => props.onSelectTool('lasso')}
+                style={activeToggleStyle(props.activeTool === 'lasso')}
+                title="Lasso Selection (L) - Freehand loop to select strokes & items"
+              >
+                <Lasso size={16} />
+                <span>Lasso</span>
+              </button>
               {props.onInsertTextBox && (
                 <button
                   onClick={props.onInsertTextBox}
@@ -378,7 +387,7 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
             {/* Clipboard Group */}
             <RibbonGroup title="Clipboard">
               <button
-                onClick={() => navigator.clipboard.readText().then(props.onClearFormatting)}
+                onClick={props.onPaste ? props.onPaste : () => navigator.clipboard?.readText?.().catch(() => {})}
                 title="Paste (Ctrl+V)"
                 style={actionButtonStyle}
               >
@@ -786,6 +795,16 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
                 <Type size={16} />
                 <span>Type</span>
               </button>
+              {props.onInsertTextBox && (
+                <button
+                  onClick={props.onInsertTextBox}
+                  style={actionButtonStyle}
+                  title="Insert Text Box - Add movable note container"
+                >
+                  <FileText size={16} color={appleTheme.colors.accent} />
+                  <span>Text Box</span>
+                </button>
+              )}
               <button
                 onClick={() => props.onSelectTool('select')}
                 style={activeToggleStyle(props.activeTool === 'select')}

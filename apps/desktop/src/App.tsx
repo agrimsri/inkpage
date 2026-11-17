@@ -534,16 +534,22 @@ const AppContent: React.FC = () => {
         if (!isInput && !e.ctrlKey && !e.metaKey && !e.altKey) {
           if (e.key === 'v' || e.key === 'V') {
             setActiveTool('select');
+            setSelectedShape(null);
           } else if (e.key === 't' || e.key === 'T') {
             setActiveTool('text');
+            setSelectedShape(null);
           } else if (e.key === 'l' || e.key === 'L') {
             setActiveTool('lasso');
+            setSelectedShape(null);
           } else if (e.key === 'p' || e.key === 'P') {
             setActiveTool('pen');
+            setSelectedShape(null);
           } else if (e.key === 'e' || e.key === 'E') {
             setActiveTool('eraser');
+            setSelectedShape(null);
           } else if (e.key === 'h' || e.key === 'H') {
             setActiveTool('highlighter');
+            setSelectedShape(null);
           }
         }
       }
@@ -643,11 +649,59 @@ const AppContent: React.FC = () => {
   const handleInsertSpace = () => {
     if (!activePage) return;
     const updatedItems = activePage.items.map((item) => {
-      if (item.kind === 'ink') return item;
+      if (item.kind === 'ink') {
+        const inkGroup = item as InkGroup;
+        return {
+          ...inkGroup,
+          strokes: (inkGroup.strokes || []).map((s) => ({
+            ...s,
+            pts: (s.pts || []).map(
+              (p) => [p[0], p[1] + 100, ...p.slice(2)] as [number, number, number]
+            ),
+          })),
+        };
+      }
       return { ...item, y: item.y + 100 };
     });
     handleUpdatePage({ ...activePage, items: updatedItems });
   };
+
+  // Clipboard Paste handler
+  const handlePaste = useCallback(async () => {
+    if (!activePage) return;
+    try {
+      const text = await navigator.clipboard?.readText?.();
+      if (!text) return;
+      const x = Math.max(60, Math.round(-canvasPan.x / canvasZoom + 80));
+      const y = Math.max(60, Math.round(-canvasPan.y / canvasZoom + 100));
+      const lines = text.split('\n');
+      const content = lines.map((line) => ({
+        type: 'outlineItem',
+        attrs: { indent: 0 },
+        content: line ? [{ type: 'text', text: line }] : [],
+      }));
+      const newId = `container_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const newContainer: Container = {
+        id: newId,
+        kind: 'container',
+        x,
+        y,
+        w: 520,
+        h: Math.max(120, lines.length * 32),
+        z: (activePage.items.length || 0) + 1,
+        doc: {
+          type: 'doc',
+          content,
+        },
+      };
+      handleUpdatePage({
+        ...activePage,
+        items: [...activePage.items, newContainer],
+      });
+      setSelectedItemId(newId);
+      setActiveTool('text');
+    } catch {}
+  }, [activePage, canvasPan, canvasZoom, handleUpdatePage]);
 
   // Insert table
   const handleInsertTable = (rows: number, cols: number) => {
@@ -1371,7 +1425,7 @@ const AppContent: React.FC = () => {
           onSelectTab={(tab) => {
             setActiveTab(tab);
             if (tab === 'home' || tab === 'insert') {
-              if (activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'eraser') {
+              if (activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'eraser' || activeTool === 'lasso') {
                 setActiveTool('select');
               }
             } else if (tab === 'draw') {
@@ -1382,9 +1436,14 @@ const AppContent: React.FC = () => {
           }}
           activeTool={activeTool}
           onSelectTool={(tool) => {
-            setActiveTool(tool);
+            if (tool === 'text' && activeTool === 'text') {
+              handleInsertTextBox();
+            } else {
+              setActiveTool(tool);
+            }
             setSelectedShape(null);
           }}
+          onPaste={handlePaste}
           activeColor={activeColor}
           onSelectColor={setActiveColor}
           activeWidth={activeWidth}
@@ -1671,6 +1730,14 @@ const AppContent: React.FC = () => {
               onZoomChange={setCanvasZoom}
               pan={canvasPan}
               onPanChange={setCanvasPan}
+              fontFamily={fontFamily}
+              fontSize={fontSize}
+              isBold={isBold}
+              isItalic={isItalic}
+              isUnderline={isUnderline}
+              isStrikethrough={isStrikethrough}
+              fontColor={fontColor}
+              textAlign={textAlign}
             />
           ) : (
             <div

@@ -27,6 +27,14 @@ export interface OutlineEditorProps {
   container: Container;
   isSelected: boolean;
   autoFocus?: boolean;
+  fontFamily?: string;
+  fontSize?: number;
+  isBold?: boolean;
+  isItalic?: boolean;
+  isUnderline?: boolean;
+  isStrikethrough?: boolean;
+  fontColor?: string;
+  textAlign?: 'left' | 'center' | 'right';
   onUpdate: (updatedDoc: PMDocNode) => void;
   onFocus?: () => void;
 }
@@ -35,6 +43,14 @@ export const OutlineEditor: React.FC<OutlineEditorProps> = ({
   container,
   isSelected,
   autoFocus = true,
+  fontFamily,
+  fontSize,
+  isBold,
+  isItalic,
+  isUnderline,
+  isStrikethrough,
+  fontColor,
+  textAlign,
   onUpdate,
   onFocus,
 }) => {
@@ -86,7 +102,7 @@ export const OutlineEditor: React.FC<OutlineEditorProps> = ({
       const el = inputRefs.current[targetIndex] || inputRefs.current[0];
       if (el && document.activeElement !== el) {
         const timer = setTimeout(() => {
-          el.focus();
+          el.focus({ preventScroll: true });
         }, 30);
         return () => clearTimeout(timer);
       }
@@ -133,7 +149,7 @@ export const OutlineEditor: React.FC<OutlineEditorProps> = ({
       newItems.splice(index + 1, 0, newItem);
       syncToDoc(newItems);
       setTimeout(() => {
-        inputRefs.current[index + 1]?.focus();
+        inputRefs.current[index + 1]?.focus({ preventScroll: true });
       }, 10);
     } else if (e.key === 'Tab') {
       e.preventDefault();
@@ -163,7 +179,7 @@ export const OutlineEditor: React.FC<OutlineEditorProps> = ({
         syncToDoc(newItems);
         const prevIndex = Math.max(0, index - 1);
         setTimeout(() => {
-          inputRefs.current[prevIndex]?.focus();
+          inputRefs.current[prevIndex]?.focus({ preventScroll: true });
         }, 10);
       }
     } else if (e.ctrlKey && e.key === '1') {
@@ -211,7 +227,7 @@ export const OutlineEditor: React.FC<OutlineEditorProps> = ({
         // If clicking container blank space, focus active or last input
         if (e.target === e.currentTarget || (e.target as HTMLElement).tagName !== 'INPUT') {
           const idx = activeItemIndex >= 0 && activeItemIndex < items.length ? activeItemIndex : Math.max(0, items.length - 1);
-          inputRefs.current[idx]?.focus();
+          inputRefs.current[idx]?.focus({ preventScroll: true });
         }
       }}
       style={{
@@ -364,11 +380,24 @@ export const OutlineEditor: React.FC<OutlineEditorProps> = ({
                   border: 'none',
                   outline: 'none',
                   background: 'transparent',
-                  fontFamily: 'inherit',
-                  fontSize: 15,
+                  fontFamily: isSelected && fontFamily ? fontFamily : 'inherit',
+                  fontSize: isSelected && fontSize ? fontSize : 15,
+                  fontWeight: isSelected && isBold ? 700 : 400,
+                  fontStyle: isSelected && isItalic ? 'italic' : 'normal',
                   lineHeight: '1.5',
-                  color: todoTag?.done ? appleTheme.colors.labelQuaternary : appleTheme.colors.labelPrimary,
-                  textDecoration: todoTag?.done ? 'line-through' : 'none',
+                  textAlign: isSelected && textAlign ? textAlign : 'left',
+                  color: todoTag?.done
+                    ? appleTheme.colors.labelQuaternary
+                    : isSelected && fontColor
+                      ? fontColor
+                      : appleTheme.colors.labelPrimary,
+                  textDecoration: todoTag?.done
+                    ? 'line-through'
+                    : isSelected && isUnderline
+                      ? 'underline'
+                      : isSelected && isStrikethrough
+                        ? 'line-through'
+                        : 'none',
                 }}
               />
             </div>
