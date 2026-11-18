@@ -1,6 +1,6 @@
 [package]
 name = "inkpage-core"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 description = "Core storage engine, SQLite FTS5 index, export, and RPC server for Inkpage"
 
