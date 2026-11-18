@@ -13,6 +13,7 @@ import {
   Indent,
   Outdent,
   Plus,
+  Trash2,
 } from 'lucide-react';
 
 export interface OutlineItemData {
@@ -37,6 +38,7 @@ export interface OutlineEditorProps {
   textAlign?: 'left' | 'center' | 'right';
   onUpdate: (updatedDoc: PMDocNode) => void;
   onFocus?: () => void;
+  onDelete?: () => void;
 }
 
 export const OutlineEditor: React.FC<OutlineEditorProps> = ({
@@ -53,6 +55,7 @@ export const OutlineEditor: React.FC<OutlineEditorProps> = ({
   textAlign,
   onUpdate,
   onFocus,
+  onDelete,
 }) => {
   const [items, setItems] = useState<OutlineItemData[]>([]);
   const [activeItemIndex, setActiveItemIndex] = useState<number>(0);
@@ -181,6 +184,9 @@ export const OutlineEditor: React.FC<OutlineEditorProps> = ({
         setTimeout(() => {
           inputRefs.current[prevIndex]?.focus({ preventScroll: true });
         }, 10);
+      } else if (items.length === 1 && onDelete) {
+        e.preventDefault();
+        onDelete();
       }
     } else if (e.ctrlKey && e.key === '1') {
       e.preventDefault();
@@ -305,6 +311,29 @@ export const OutlineEditor: React.FC<OutlineEditorProps> = ({
           >
             <Outdent size={15} color={appleTheme.colors.labelSecondary} />
           </button>
+          {onDelete && (
+            <>
+              <div style={{ width: 1, height: 16, backgroundColor: appleTheme.colors.borderMedium, margin: '0 4px' }} />
+              <button
+                type="button"
+                title="Delete Container (Delete / Backspace)"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete();
+                }}
+                onPointerDown={(e) => e.stopPropagation()}
+                onPointerUp={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+                onMouseUp={(e) => e.stopPropagation()}
+                style={{
+                  ...quickToolbarBtnStyle,
+                  color: appleTheme.colors.destructive,
+                }}
+              >
+                <Trash2 size={15} />
+              </button>
+            </>
+          )}
         </div>
       )}
 

@@ -207,6 +207,7 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
     // Multi-selection for Lasso / Marquee / Select tool
     const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
     const [selectedStrokeIds, setSelectedStrokeIds] = useState<string[]>([]);
+    const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
 
     // Lasso drawing state
     const [lassoPath, setLassoPath] = useState<{ x: number; y: number }[] | null>(null);
@@ -318,7 +319,7 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
 
     const compositeBBox = useMemo(() => {
       const targetItemIds = new Set(selectedItemIds);
-      if (selectedItemId && (tool === "lasso" || selectedStrokeIds.length > 0 || selectedItemIds.length > 1)) {
+      if (selectedItemId) {
         targetItemIds.add(selectedItemId);
       }
       if (targetItemIds.size === 0 && selectedStrokeIds.length === 0)
@@ -460,13 +461,31 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
       !page.pageColor || page.pageColor === "#ffffff"
         ? appleTheme.colors.bgCanvas
         : page.pageColor;
-    const paperPreset = page.size?.preset || "auto";
+    const paperPreset =
+      page.size?.preset ||
+      (page.size?.w === 794
+        ? "a4"
+        : page.size?.w === 816
+          ? "letter"
+          : "auto");
     const sheetW =
-      paperPreset === "letter" ? 816 : paperPreset === "a4" ? 794 : 0;
+      typeof page.size?.w === "number"
+        ? page.size.w
+        : paperPreset === "letter"
+          ? 816
+          : paperPreset === "a4"
+            ? 794
+            : 0;
     const sheetH =
-      paperPreset === "letter" ? 1056 : paperPreset === "a4" ? 1123 : 0;
-    const sheetX = 80;
-    const sheetY = 50;
+      typeof page.size?.h === "number"
+        ? page.size.h
+        : paperPreset === "letter"
+          ? 1056
+          : paperPreset === "a4"
+            ? 1123
+            : 0;
+    const sheetX = 0;
+    const sheetY = 0;
     const ruleLineColor =
       !page.background?.color || page.background.color === "rgba(0, 0, 0, 0.13)"
         ? "var(--color-rule-line, rgba(0, 0, 0, 0.08))"
@@ -476,16 +495,266 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
       (clientX: number, clientY: number) => {
         const rect = containerRef.current?.getBoundingClientRect();
         if (!rect) return { x: 0, y: 0 };
-        let x = (clientX - rect.left - pan.x) / zoom;
-        let y = (clientY - rect.top - pan.y) / zoom;
-        if (paperPreset !== "auto") {
-          x -= sheetX;
-          y -= sheetY;
-        }
+        const x = (clientX - rect.left - pan.x) / zoom;
+        const y = (clientY - rect.top - pan.y) / zoom;
         return { x, y };
       },
-      [pan.x, pan.y, zoom, paperPreset],
+      [pan.x, pan.y, zoom],
     );
+
+    // Scrollbar metrics calculation
+    const scrollMetrics = useMemo(() => {
+      const vW = Math.max(100, viewportSize.w || 1000);
+      const vH = Math.max(100, viewportSize.h || 700);
+
+      // Base bounds for scroll range
+      let minX = 0;
+      let minY = 0;
+      let maxX =
+        paperPreset !== "auto"
+          ? sheetW
+          : Math.max(1800, vW / zoom);
+      let maxY =
+        paperPreset !== "auto"
+          ? sheetH
+          : Math.max(1400, vH / zoom);
+
+      // Incorporate all page items
+      for (const item of page.items) {
+        if (item.kind === "ink") continue;
+        const ix = item.x;
+        const iy = item.y;
+        const iw = item.w || 200;
+        const ih = item.h || 100;
+        if (ix < minX) minX = ix;
+        if (iy < minY) minY = iy;
+        if (ix + iw > maxX) maxX = ix + iw;
+        if (iy + ih > maxY) maxY = iy + ih;
+      }
+
+      // Incorporate ink strokes
+      for (const stroke of currentInkGroup.strokes || []) {
+        if (!stroke.pts || stroke.pts.length === 0) continue;
+        for (const pt of stroke.pts) {
+          const sx = pt[0];
+          const sy = pt[1];
+          if (sx < minX) minX = sx;
+          if (sy < minY) minY = sy;
+          if (sx > maxX) maxX = sx;
+          if (sy > maxY) maxY = sy;
+        }
+      }
+
+      // Add comfortable padding around content
+      const pad = 60;
+      const contentMinX = minX - pad;
+      const contentMinY = minY - pad;
+      const contentMaxX = maxX + pad;
+      const contentMaxY = maxY + pad;
+
+      // Current visible viewport bounds in canvas space
+      const visibleLeft = -pan.x / zoom;
+      const visibleTop = -pan.y / zoom;
+      const visibleRight = (vW - pan.x) / zoom;
+      const visibleBottom = (vH - pan.y) / zoom;
+
+      const viewSpanX = vW / zoom;
+      const viewSpanY = vH / zoom;
+
+      const scrollMinX = Math.min(contentMinX, visibleLeft);
+      const scrollMaxX = Math.max(contentMaxX, visibleRight);
+      const scrollMinY = Math.min(contentMinY, visibleTop);
+      const scrollMaxY = Math.max(contentMaxY, visibleBottom);
+
+      const docW = Math.max(viewSpanX, scrollMaxX - scrollMinX);
+      const docH = Math.max(viewSpanY, scrollMaxY - scrollMinY);
+
+      // Track dimensions (leaving 14px corner for bottom-right)
+      const trackWidth = Math.max(20, vW - 14);
+      const trackHeight = Math.max(20, vH - 14);
+
+      // Thumb dimensions (proportional, minimum 36px)
+      const thumbW = Math.max(
+        36,
+        Math.min(trackWidth, (viewSpanX / docW) * trackWidth),
+      );
+      const thumbH = Math.max(
+        36,
+        Math.min(trackHeight, (viewSpanY / docH) * trackHeight),
+      );
+
+      // Thumb positions
+      const maxScrollX = docW - viewSpanX;
+      const maxScrollY = docH - viewSpanY;
+
+      const fracX =
+        maxScrollX > 0
+          ? Math.max(0, Math.min(1, (visibleLeft - scrollMinX) / maxScrollX))
+          : 0;
+      const fracY =
+        maxScrollY > 0
+          ? Math.max(0, Math.min(1, (visibleTop - scrollMinY) / maxScrollY))
+          : 0;
+
+      const thumbX = Math.max(
+        0,
+        Math.min(trackWidth - thumbW, fracX * (trackWidth - thumbW)),
+      );
+      const thumbY = Math.max(
+        0,
+        Math.min(trackHeight - thumbH, fracY * (trackHeight - thumbH)),
+      );
+
+      return {
+        vW,
+        vH,
+        scrollMinX,
+        scrollMinY,
+        scrollMaxX,
+        scrollMaxY,
+        docW,
+        docH,
+        viewSpanX,
+        viewSpanY,
+        trackWidth,
+        trackHeight,
+        thumbW,
+        thumbH,
+        thumbX,
+        thumbY,
+        maxScrollX,
+        maxScrollY,
+      };
+    }, [
+      viewportSize.w,
+      viewportSize.h,
+      pan.x,
+      pan.y,
+      zoom,
+      paperPreset,
+      sheetW,
+      sheetH,
+      page.items,
+      currentInkGroup.strokes,
+    ]);
+
+    const scrollDragRef = useRef<{
+      axis: "x" | "y";
+      startPointer: number;
+      startPan: number;
+      trackLength: number;
+      thumbLength: number;
+      scrollRange: number;
+      zoom: number;
+    } | null>(null);
+
+    const handleScrollbarPointerDown = (
+      e: React.PointerEvent<HTMLDivElement>,
+      axis: "x" | "y",
+      isThumb: boolean,
+    ) => {
+      e.stopPropagation();
+      e.preventDefault();
+
+      if (isThumb) {
+        scrollDragRef.current = {
+          axis,
+          startPointer: axis === "x" ? e.clientX : e.clientY,
+          startPan: axis === "x" ? pan.x : pan.y,
+          trackLength:
+            axis === "x"
+              ? scrollMetrics.trackWidth
+              : scrollMetrics.trackHeight,
+          thumbLength:
+            axis === "x" ? scrollMetrics.thumbW : scrollMetrics.thumbH,
+          scrollRange:
+            axis === "x"
+              ? scrollMetrics.maxScrollX
+              : scrollMetrics.maxScrollY,
+          zoom,
+        };
+
+        const onGlobalMove = (ev: PointerEvent) => {
+          if (!scrollDragRef.current) return;
+          ev.preventDefault();
+          const drag = scrollDragRef.current;
+          const currentPointer = drag.axis === "x" ? ev.clientX : ev.clientY;
+          const deltaPointer = currentPointer - drag.startPointer;
+          const usableTrack = drag.trackLength - drag.thumbLength;
+          if (usableTrack <= 0) return;
+
+          const fracDelta = deltaPointer / usableTrack;
+          const panDelta = fracDelta * drag.scrollRange * drag.zoom;
+
+          if (drag.axis === "x") {
+            setPan((prev) => ({
+              ...prev,
+              x: Math.round(drag.startPan - panDelta),
+            }));
+          } else {
+            setPan((prev) => ({
+              ...prev,
+              y: Math.round(drag.startPan - panDelta),
+            }));
+          }
+        };
+
+        const onGlobalUp = () => {
+          scrollDragRef.current = null;
+          window.removeEventListener("pointermove", onGlobalMove);
+          window.removeEventListener("pointerup", onGlobalUp);
+          window.removeEventListener("pointercancel", onGlobalUp);
+        };
+
+        window.addEventListener("pointermove", onGlobalMove);
+        window.addEventListener("pointerup", onGlobalUp);
+        window.addEventListener("pointercancel", onGlobalUp);
+      } else {
+        // Clicked on track: page jump by 75% of viewport
+        const rect = e.currentTarget.getBoundingClientRect();
+        if (axis === "y") {
+          const clickY = e.clientY - rect.top;
+          const jump = (viewportSize.h || 700) * 0.75;
+          if (clickY < scrollMetrics.thumbY) {
+            setPan((prev) => ({
+              ...prev,
+              y: prev.y + jump,
+            }));
+          } else {
+            setPan((prev) => ({
+              ...prev,
+              y: prev.y - jump,
+            }));
+          }
+        } else {
+          const clickX = e.clientX - rect.left;
+          const jump = (viewportSize.w || 1000) * 0.75;
+          if (clickX < scrollMetrics.thumbX) {
+            setPan((prev) => ({
+              ...prev,
+              x: prev.x + jump,
+            }));
+          } else {
+            setPan((prev) => ({
+              ...prev,
+              x: prev.x - jump,
+            }));
+          }
+        }
+      }
+    };
+
+    const handleScrollbarPointerMove = (
+      e: React.PointerEvent<HTMLDivElement>,
+    ) => {
+      // Legacy fallback handler
+    };
+
+    const handleScrollbarPointerUp = (
+      e: React.PointerEvent<HTMLDivElement>,
+    ) => {
+      // Handled by global window listener
+    };
 
     const draggingItemRef = useRef<{
       id: string;
@@ -609,33 +878,54 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
 
       if (isBackground) {
         if (tool === "text") {
-          const newContainer: Container = {
-            id: `container_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-            kind: "container",
-            x: Math.round(canvasX),
-            y: Math.round(canvasY),
-            w: 520,
-            h: 180,
-            z: (page.items.length || 0) + 1,
-            doc: {
-              type: "doc",
-              content: [
-                {
-                  type: "outlineItem",
-                  attrs: { indent: 0 },
-                  content: [{ type: "text", text: "" }],
-                },
-              ],
-            },
-          };
+          const canCreate =
+            paperPreset === "auto" ||
+            (canvasX >= -20 &&
+              canvasX <= sheetW + 20 &&
+              canvasY >= -20 &&
+              canvasY <= sheetH + 20);
 
-          onUpdatePage({
-            ...page,
-            items: [...page.items, newContainer],
-          });
-          setSelectedItemId(newContainer.id);
-          setSelectedItemIds([newContainer.id]);
-          setSelectedStrokeIds([]);
+          if (canCreate) {
+            const targetX =
+              paperPreset !== "auto"
+                ? Math.max(20, Math.min(sheetW - 140, Math.round(canvasX)))
+                : Math.round(canvasX);
+            const targetY =
+              paperPreset !== "auto"
+                ? Math.max(20, Math.min(sheetH - 60, Math.round(canvasY)))
+                : Math.round(canvasY);
+            const availableW =
+              paperPreset !== "auto" ? sheetW - targetX - 20 : 520;
+            const newW = Math.max(220, Math.min(520, availableW));
+
+            const newContainer: Container = {
+              id: `container_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+              kind: "container",
+              x: targetX,
+              y: targetY,
+              w: newW,
+              h: 180,
+              z: (page.items.length || 0) + 1,
+              doc: {
+                type: "doc",
+                content: [
+                  {
+                    type: "outlineItem",
+                    attrs: { indent: 0 },
+                    content: [{ type: "text", text: "" }],
+                  },
+                ],
+              },
+            };
+
+            onUpdatePage({
+              ...page,
+              items: [...page.items, newContainer],
+            });
+            setSelectedItemId(newContainer.id);
+            setSelectedItemIds([newContainer.id]);
+            setSelectedStrokeIds([]);
+          }
           return;
         } else if (tool === "select") {
           try {
@@ -1018,7 +1308,65 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
               setSelectedItemIds([]);
               setSelectedItemId(null);
             } else {
-              clearSelection();
+              // Click on empty canvas/sheet: create a note container and start typing!
+              const canCreate =
+                paperPreset === "auto" ||
+                (box.startX >= -20 &&
+                  box.startX <= sheetW + 20 &&
+                  box.startY >= -20 &&
+                  box.startY <= sheetH + 20);
+
+              if (canCreate) {
+                const targetX =
+                  paperPreset !== "auto"
+                    ? Math.max(
+                        20,
+                        Math.min(sheetW - 140, Math.round(box.startX)),
+                      )
+                    : Math.round(box.startX);
+                const targetY =
+                  paperPreset !== "auto"
+                    ? Math.max(
+                        20,
+                        Math.min(sheetH - 60, Math.round(box.startY)),
+                      )
+                    : Math.round(box.startY);
+
+                const availableW =
+                  paperPreset !== "auto" ? sheetW - targetX - 20 : 520;
+                const newW = Math.max(220, Math.min(520, availableW));
+
+                const newContainer: Container = {
+                  id: `container_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+                  kind: "container",
+                  x: targetX,
+                  y: targetY,
+                  w: newW,
+                  h: 180,
+                  z: (page.items.length || 0) + 1,
+                  doc: {
+                    type: "doc",
+                    content: [
+                      {
+                        type: "outlineItem",
+                        attrs: { indent: 0 },
+                        content: [{ type: "text", text: "" }],
+                      },
+                    ],
+                  },
+                };
+
+                onUpdatePage({
+                  ...page,
+                  items: [...page.items, newContainer],
+                });
+                setSelectedItemId(newContainer.id);
+                setSelectedItemIds([newContainer.id]);
+                setSelectedStrokeIds([]);
+                if (onSelectTool) onSelectTool("text");
+              } else {
+                clearSelection();
+              }
             }
           }
         }
@@ -1170,12 +1518,33 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
 
       const { x: canvasX, y: canvasY } = getCanvasCoords(e.clientX, e.clientY);
 
+      const canCreate =
+        paperPreset === "auto" ||
+        (canvasX >= -20 &&
+          canvasX <= sheetW + 20 &&
+          canvasY >= -20 &&
+          canvasY <= sheetH + 20);
+
+      if (!canCreate) return;
+
+      const targetX =
+        paperPreset !== "auto"
+          ? Math.max(20, Math.min(sheetW - 140, Math.round(canvasX)))
+          : Math.round(canvasX);
+      const targetY =
+        paperPreset !== "auto"
+          ? Math.max(20, Math.min(sheetH - 60, Math.round(canvasY)))
+          : Math.round(canvasY);
+      const availableW =
+        paperPreset !== "auto" ? sheetW - targetX - 20 : 480;
+      const newW = Math.max(220, Math.min(480, availableW));
+
       const newContainer: Container = {
         id: `container_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
         kind: "container",
-        x: Math.round(canvasX),
-        y: Math.round(canvasY),
-        w: 480,
+        x: targetX,
+        y: targetY,
+        w: newW,
         h: 200,
         z: (page.items.length || 0) + 1,
         doc: {
@@ -1207,11 +1576,16 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
           if (item.kind === "ink") return null;
           const isSelected = selectedItemId === item.id || selectedItemIds.includes(item.id);
           const isShape = item.kind === "shape";
+          const isHeaderVisible = isSelected || hoveredItemId === item.id;
 
           return (
             <div
               key={item.id}
               className="canvas-note-item"
+              onMouseEnter={() => setHoveredItemId(item.id)}
+              onMouseLeave={() =>
+                setHoveredItemId((prev) => (prev === item.id ? null : prev))
+              }
               onPointerDown={(e) => {
                 if (isShape && tool === "select") {
                   e.stopPropagation();
@@ -1274,6 +1648,9 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
                   setSelectedItemId(item.id);
                   setSelectedItemIds([item.id]);
                   setSelectedStrokeIds([]);
+                  if (item.kind === "container" && onSelectTool) {
+                    onSelectTool("text");
+                  }
                 }
               }}
             >
@@ -1316,7 +1693,8 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
                     borderTopLeftRadius: appleTheme.radii.lg - 1, // calculated nested radius
                     borderTopRightRadius: appleTheme.radii.lg - 1,
                     cursor: "grab",
-                    opacity: isSelected ? 1 : 0,
+                    opacity: isHeaderVisible ? 1 : 0,
+                    pointerEvents: isHeaderVisible ? "auto" : "none",
                     transition: "opacity 0.15s",
                   }}
                 >
@@ -1341,6 +1719,19 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
                     </span>
                   </div>
                   <button
+                    type="button"
+                    onPointerDown={(e) => {
+                      e.stopPropagation();
+                    }}
+                    onPointerUp={(e) => {
+                      e.stopPropagation();
+                    }}
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                    }}
+                    onMouseUp={(e) => {
+                      e.stopPropagation();
+                    }}
                     onClick={(e) => {
                       e.stopPropagation();
                       deleteItem(item.id);
@@ -1356,6 +1747,7 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
                       justifyContent: "center",
                       borderRadius: appleTheme.radii.xs,
                       transition: appleTheme.transitions.fast,
+                      zIndex: 10,
                     }}
                     onMouseEnter={(e) =>
                       ((e.currentTarget as HTMLElement).style.color =
@@ -1384,7 +1776,7 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
                   <OutlineEditor
                     container={item as Container}
                     isSelected={isSelected}
-                    autoFocus={isSelected && tool === "text"}
+                    autoFocus={isSelected}
                     fontFamily={fontFamily}
                     fontSize={fontSize}
                     isBold={isBold}
@@ -1404,6 +1796,7 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
                       setSelectedItemIds([item.id]);
                       setSelectedStrokeIds([]);
                     }}
+                    onDelete={() => deleteItem(item.id)}
                   />
                 )}
 
@@ -1966,8 +2359,8 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
           (tool === "lasso" ||
             tool === "select" ||
             selectedStrokeIds.length > 0 ||
-            selectedItemIds.length > 1 ||
-            (selectedItemId && selectedItemIds.length > 0 && !selectedItemIds.includes(selectedItemId))) && (
+            selectedItemIds.length > 0 ||
+            selectedItemId) && (
             <div
               className="lasso-composite-box"
               style={{
@@ -2039,6 +2432,9 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
                   }}
                 />
                 <button
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onPointerUp={(e) => e.stopPropagation()}
                   onClick={(e) => {
                     e.stopPropagation();
                     handleDeleteSelection();
@@ -2154,8 +2550,8 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
               className="canvas-paper-sheet"
               style={{
                 position: "absolute",
-                left: sheetX,
-                top: sheetY,
+                left: 0,
+                top: 0,
                 width: sheetW,
                 height: sheetH,
                 backgroundColor: pageBgColor,
@@ -2194,9 +2590,7 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
           width={activeWidth}
           zoom={zoom}
           pan={pan}
-          offset={
-            paperPreset !== "auto" ? { x: sheetX, y: sheetY } : { x: 0, y: 0 }
-          }
+          offset={{ x: 0, y: 0 }}
           viewportWidth={viewportSize.w}
           viewportHeight={viewportSize.h}
           clipRect={
@@ -2219,8 +2613,8 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
         <div
           style={{
             position: "absolute",
-            right: 20,
-            bottom: 20,
+            right: 24,
+            bottom: 24,
             display: "flex",
             alignItems: "center",
             gap: 6,
@@ -2236,6 +2630,7 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
             fontWeight: 600,
             color: appleTheme.colors.labelPrimary,
             userSelect: "none",
+            zIndex: 40,
           }}
         >
           <button
@@ -2316,6 +2711,115 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
             Reset
           </button>
         </div>
+
+        {/* ================= Interactive Canvas Scrollbars ================= */}
+        {/* Horizontal Scrollbar */}
+        <div
+          className="canvas-scrollbar horizontal"
+          onPointerDown={(e) => handleScrollbarPointerDown(e, "x", false)}
+          onPointerMove={handleScrollbarPointerMove}
+          onPointerUp={handleScrollbarPointerUp}
+          style={{
+            position: "absolute",
+            left: 0,
+            bottom: 0,
+            width: scrollMetrics.trackWidth,
+            height: 12,
+            backgroundColor: "rgba(128, 128, 128, 0.06)",
+            zIndex: 45,
+            cursor: "pointer",
+            userSelect: "none",
+          }}
+          title="Pan horizontally (drag thumb or click track)"
+        >
+          <div
+            className="canvas-scrollbar-thumb"
+            onPointerDown={(e) => handleScrollbarPointerDown(e, "x", true)}
+            onPointerMove={handleScrollbarPointerMove}
+            onPointerUp={handleScrollbarPointerUp}
+            style={{
+              position: "absolute",
+              left: scrollMetrics.thumbX,
+              top: 2,
+              width: scrollMetrics.thumbW,
+              height: 8,
+              borderRadius: 6,
+              backgroundColor: "rgba(120, 120, 128, 0.45)",
+              boxShadow: "0 1px 3px rgba(0, 0, 0, 0.15)",
+              cursor: "grab",
+              transition: "background-color 0.15s, height 0.15s",
+            }}
+            onMouseEnter={(e) =>
+              ((e.currentTarget as HTMLElement).style.backgroundColor =
+                "rgba(120, 120, 128, 0.75)")
+            }
+            onMouseLeave={(e) =>
+              ((e.currentTarget as HTMLElement).style.backgroundColor =
+                "rgba(120, 120, 128, 0.45)")
+            }
+          />
+        </div>
+
+        {/* Vertical Scrollbar */}
+        <div
+          className="canvas-scrollbar vertical"
+          onPointerDown={(e) => handleScrollbarPointerDown(e, "y", false)}
+          onPointerMove={handleScrollbarPointerMove}
+          onPointerUp={handleScrollbarPointerUp}
+          style={{
+            position: "absolute",
+            right: 0,
+            top: 0,
+            width: 12,
+            height: scrollMetrics.trackHeight,
+            backgroundColor: "rgba(128, 128, 128, 0.06)",
+            zIndex: 45,
+            cursor: "pointer",
+            userSelect: "none",
+          }}
+          title="Pan vertically (drag thumb or click track)"
+        >
+          <div
+            className="canvas-scrollbar-thumb"
+            onPointerDown={(e) => handleScrollbarPointerDown(e, "y", true)}
+            onPointerMove={handleScrollbarPointerMove}
+            onPointerUp={handleScrollbarPointerUp}
+            style={{
+              position: "absolute",
+              top: scrollMetrics.thumbY,
+              left: 2,
+              width: 8,
+              height: scrollMetrics.thumbH,
+              borderRadius: 6,
+              backgroundColor: "rgba(120, 120, 128, 0.45)",
+              boxShadow: "0 1px 3px rgba(0, 0, 0, 0.15)",
+              cursor: "grab",
+              transition: "background-color 0.15s, width 0.15s",
+            }}
+            onMouseEnter={(e) =>
+              ((e.currentTarget as HTMLElement).style.backgroundColor =
+                "rgba(120, 120, 128, 0.75)")
+            }
+            onMouseLeave={(e) =>
+              ((e.currentTarget as HTMLElement).style.backgroundColor =
+                "rgba(120, 120, 128, 0.45)")
+            }
+          />
+        </div>
+
+        {/* Scrollbar Corner Spacer */}
+        <div
+          style={{
+            position: "absolute",
+            right: 0,
+            bottom: 0,
+            width: 12,
+            height: 12,
+            backgroundColor: "rgba(128, 128, 128, 0.08)",
+            zIndex: 45,
+            pointerEvents: "none",
+          }}
+        />
       </div>
     );
   },

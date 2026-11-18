@@ -330,6 +330,15 @@ const AppContent: React.FC = () => {
     historyRef.current = [safePage];
     historyIdxRef.current = 0;
     lastUndoPushTimeRef.current = 0;
+    if (safePage.size?.preset && safePage.size.preset !== 'auto') {
+      const sheetWidth = typeof safePage.size.w === 'number' ? safePage.size.w : safePage.size.preset === 'letter' ? 816 : 794;
+      const vW = typeof window !== 'undefined' ? window.innerWidth : 1200;
+      const targetPanX = Math.max(40, Math.round((vW - sheetWidth) / 2));
+      setCanvasPan({ x: targetPanX, y: 40 });
+    } else {
+      setCanvasPan({ x: 0, y: 0 });
+    }
+    setCanvasZoom(1.0);
   };
 
   const handleUpdatePage = useCallback(
@@ -738,15 +747,22 @@ const AppContent: React.FC = () => {
   // Insert Text Box Handler
   const handleInsertTextBox = useCallback(() => {
     if (!activePage) return;
-    const x = Math.max(60, Math.round(-canvasPan.x / canvasZoom + 80));
-    const y = Math.max(60, Math.round(-canvasPan.y / canvasZoom + 100));
+    const isFixedPaper = activePage.size?.preset && activePage.size.preset !== 'auto';
+    const paperW = activePage.size?.preset === 'letter' ? 816 : 794;
+    let x = Math.max(40, Math.round(-canvasPan.x / canvasZoom + 80));
+    let y = Math.max(40, Math.round(-canvasPan.y / canvasZoom + 100));
+    if (isFixedPaper) {
+      x = Math.max(40, Math.min(paperW - 240, x));
+      y = Math.max(40, Math.min(900, y));
+    }
+    const width = isFixedPaper ? Math.max(220, Math.min(520, paperW - x - 40)) : 520;
     const newId = `container_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const newContainer: Container = {
       id: newId,
       kind: 'container',
       x,
       y,
-      w: 520,
+      w: width,
       h: 180,
       z: (activePage.items.length || 0) + 1,
       doc: {
@@ -1577,14 +1593,25 @@ const AppContent: React.FC = () => {
           paperSize={activePage?.size?.preset || 'auto'}
           onSelectPaperSize={(preset) => {
             if (activePage) {
+              const w = preset === 'letter' ? 816 : preset === 'a4' ? 794 : 'auto';
+              const h = preset === 'letter' ? 1056 : preset === 'a4' ? 1123 : 'auto';
               handleUpdatePage({
                 ...activePage,
                 size: {
-                  w: preset === 'letter' ? 816 : preset === 'a4' ? 794 : 'auto',
-                  h: preset === 'letter' ? 1056 : preset === 'a4' ? 1123 : 'auto',
+                  w,
+                  h,
                   preset,
                 },
               });
+              if (preset !== 'auto') {
+                const sheetWidth = typeof w === 'number' ? w : 794;
+                const vW = typeof window !== 'undefined' ? window.innerWidth : 1200;
+                const targetPanX = Math.max(40, Math.round((vW - sheetWidth) / 2));
+                setCanvasPan({ x: targetPanX, y: 40 });
+              } else {
+                setCanvasPan({ x: 0, y: 0 });
+              }
+              setCanvasZoom(1.0);
             }
           }}
           onZoomIn={handleZoomIn}

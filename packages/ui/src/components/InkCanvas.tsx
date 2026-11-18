@@ -270,13 +270,14 @@ export const InkCanvas: React.FC<InkCanvasProps> = ({
     const y = (e.clientY - rect.top - originY) / zoom;
     const pressure = e.pressure > 0 ? e.pressure : 0.5;
 
-    // If fixed paper preset is active, verify contact is inside paper sheet
+    // If fixed paper preset is active, verify contact is inside paper sheet (with edge tolerance buffer)
     if (clipRect) {
+      const buffer = 30;
       if (
-        x < clipRect.x ||
-        x > clipRect.x + clipRect.w ||
-        y < clipRect.y ||
-        y > clipRect.y + clipRect.h
+        x < clipRect.x - buffer ||
+        x > clipRect.x + clipRect.w + buffer ||
+        y < clipRect.y - buffer ||
+        y > clipRect.y + clipRect.h + buffer
       ) {
         commitActiveStroke();
         return;
