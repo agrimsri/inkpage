@@ -636,7 +636,7 @@ dependencies = [
 
 [[package]]
 name = "inkpage-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "axum",
  "clap",
@@ -658,7 +658,7 @@ dependencies = [
 
 [[package]]
 name = "inkpage-import"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "cab",
  "clap",
@@ -678,7 +678,7 @@ dependencies = [
 
 [[package]]
 name = "inkpage-onestore"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "bytes",
  "onenote_parser",

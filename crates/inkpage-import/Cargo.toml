@@ -1,6 +1,6 @@
 [package]
 name = "inkpage-import"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "OneNote semantic importer and IR converter for Inkpage"
 
