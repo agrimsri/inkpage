@@ -143,7 +143,7 @@ Inkpage is built as a modular monorepo combining a high-performance **Rust** sto
 │   └── ui/                   # React canvas, infinite viewport, vector inking, and ribbon
 ├── apps/
 │   └── desktop/              # Vite frontend shell and Electron launcher with bundled backend
-├── docs/                     # Specifications, format.md, legal.md, shortcuts.md, and ADRs
+├── docs/                     # Format specifications, shortcuts, legal, and third-party notices
 └── fixtures/                 # Synthetic OneNote format test fixtures
 ```
 
