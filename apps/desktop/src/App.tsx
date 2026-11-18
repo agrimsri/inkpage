@@ -657,25 +657,9 @@ const AppContent: React.FC = () => {
     }
   };
 
-  // Insert space tool: moves all items down by 100px
+  // Insert space tool: activates interactive canvas space insertion
   const handleInsertSpace = () => {
-    if (!activePage) return;
-    const updatedItems = activePage.items.map((item) => {
-      if (item.kind === 'ink') {
-        const inkGroup = item as InkGroup;
-        return {
-          ...inkGroup,
-          strokes: (inkGroup.strokes || []).map((s) => ({
-            ...s,
-            pts: (s.pts || []).map(
-              (p) => [p[0], p[1] + 100, ...p.slice(2)] as [number, number, number]
-            ),
-          })),
-        };
-      }
-      return { ...item, y: item.y + 100 };
-    });
-    handleUpdatePage({ ...activePage, items: updatedItems });
+    setActiveTool('insert-space');
   };
 
   // Clipboard Paste handler

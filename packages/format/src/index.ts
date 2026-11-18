@@ -112,6 +112,7 @@ export interface PMDocNode {
 export interface Container extends Box {
   kind: 'container';
   doc: PMDocNode;
+  isWidthSetByUser?: boolean;
 }
 
 export type StrokePoint = [

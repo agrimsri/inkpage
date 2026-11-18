@@ -35,6 +35,13 @@ import {
   Palette,
   X,
 } from "lucide-react";
+import {
+  calculateElasticContainerWidth,
+  calculateRuleLineBaselineOffset,
+  quantizeLineHeight,
+  applyInsertSpaceToPage,
+  parsePMDocToOutlineItems,
+} from "../utils/onenote-engine";
 
 export interface CanvasProps {
   page: Page;
@@ -46,7 +53,8 @@ export interface CanvasProps {
     | "eraser"
     | "lasso"
     | "table"
-    | "math";
+    | "math"
+    | "insert-space";
   activeColor: string;
   activeWidth: number;
   selectedShape?: ShapeType | null;
@@ -218,6 +226,18 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
     const [marqueeBox, setMarqueeBox] = useState<{ startX: number; startY: number; currX: number; currY: number } | null>(null);
     const marqueeBoxRef = useRef<{ startX: number; startY: number; currX: number; currY: number } | null>(null);
     const isMarqueeRef = useRef<boolean>(false);
+
+    // Insert Space tool state
+    const [insertSpaceGuide, setInsertSpaceGuide] = useState<{
+      startY: number;
+      currY: number;
+      startX: number;
+    } | null>(null);
+    const insertSpaceRef = useRef<{
+      startY: number;
+      currY: number;
+      startX: number;
+    } | null>(null);
 
     // Dragging whole selection (items + strokes)
     const selectionDragRef = useRef<{
@@ -859,6 +879,25 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
         }
       }
 
+      // Insert Space Tool: activate horizontal cut guide line at Y = canvasY
+      if (tool === "insert-space") {
+        if (e.button === 0) {
+          try {
+            if (e.pointerId !== undefined && e.currentTarget?.setPointerCapture) {
+              e.currentTarget.setPointerCapture(e.pointerId);
+            }
+          } catch {}
+          const guideData = {
+            startY: canvasY,
+            currY: canvasY,
+            startX: canvasX,
+          };
+          insertSpaceRef.current = guideData;
+          setInsertSpaceGuide(guideData);
+          return;
+        }
+      }
+
       // Clicking on empty canvas
       const targetEl = e.target as HTMLElement;
       const isItem = Boolean(
@@ -895,8 +934,8 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
                 ? Math.max(20, Math.min(sheetH - 60, Math.round(canvasY)))
                 : Math.round(canvasY);
             const availableW =
-              paperPreset !== "auto" ? sheetW - targetX - 20 : 520;
-            const newW = Math.max(220, Math.min(520, availableW));
+              paperPreset !== "auto" ? sheetW - targetX - 20 : 260;
+            const newW = Math.max(180, Math.min(260, availableW));
 
             const newContainer: Container = {
               id: `container_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -905,6 +944,7 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
               y: targetY,
               w: newW,
               h: 180,
+              isWidthSetByUser: false,
               z: (page.items.length || 0) + 1,
               doc: {
                 type: "doc",
@@ -1006,6 +1046,17 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
         return;
       }
 
+      // Insert Space Tool dragging
+      if (insertSpaceRef.current) {
+        const currY = Math.max(insertSpaceRef.current.startY, canvasY);
+        insertSpaceRef.current.currY = currY;
+        setInsertSpaceGuide({
+          ...insertSpaceRef.current,
+          currY,
+        });
+        return;
+      }
+
       // Moving multiple items and strokes selected by Lasso / Marquee
       if (selectionDragRef.current) {
         const dx = (e.clientX - selectionDragRef.current.startX) / zoom;
@@ -1085,6 +1136,7 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
 
         const updatedItems = page.items.map((item) => {
           if (item.id === itemId) {
+            const isCont = item.kind === "container";
             return {
               ...item,
               w: Math.max(160, Math.round(resizingItemRef.current!.initW + dx)),
@@ -1095,6 +1147,7 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
                       Math.round(resizingItemRef.current!.initH + dy),
                     )
                   : item.h,
+              ...(isCont ? { isWidthSetByUser: true } : {}),
             };
           }
           return item;
@@ -1114,6 +1167,25 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
         }
       } catch {}
       isPanningRef.current = false;
+
+      // Finalize Insert Space Tool
+      if (insertSpaceRef.current) {
+        const y0 = Math.round(insertSpaceRef.current.startY);
+        const dy = Math.round(Math.max(0, insertSpaceRef.current.currY - insertSpaceRef.current.startY));
+        insertSpaceRef.current = null;
+        setInsertSpaceGuide(null);
+
+        if (dy > 3) {
+          const ruleSp =
+            page.background?.kind === "rule" || page.background?.kind === "grid"
+              ? page.background.spacing || (page.background.kind === "rule" ? 28 : 24)
+              : 28;
+          const updatedPage = applyInsertSpaceToPage(page, y0, dy, ruleSp);
+          onUpdatePage(updatedPage);
+          if (onSelectTool) onSelectTool("select");
+        }
+        return;
+      }
 
       // Finalize shape creation
       const currentShape = drawingShapeRef.current;
@@ -1333,8 +1405,8 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
                     : Math.round(box.startY);
 
                 const availableW =
-                  paperPreset !== "auto" ? sheetW - targetX - 20 : 520;
-                const newW = Math.max(220, Math.min(520, availableW));
+                  paperPreset !== "auto" ? sheetW - targetX - 20 : 260;
+                const newW = Math.max(180, Math.min(260, availableW));
 
                 const newContainer: Container = {
                   id: `container_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -1343,6 +1415,7 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
                   y: targetY,
                   w: newW,
                   h: 180,
+                  isWidthSetByUser: false,
                   z: (page.items.length || 0) + 1,
                   doc: {
                     type: "doc",
@@ -1536,8 +1609,8 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
           ? Math.max(20, Math.min(sheetH - 60, Math.round(canvasY)))
           : Math.round(canvasY);
       const availableW =
-        paperPreset !== "auto" ? sheetW - targetX - 20 : 480;
-      const newW = Math.max(220, Math.min(480, availableW));
+        paperPreset !== "auto" ? sheetW - targetX - 20 : 260;
+      const newW = Math.max(180, Math.min(260, availableW));
 
       const newContainer: Container = {
         id: `container_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -1546,6 +1619,7 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
         y: targetY,
         w: newW,
         h: 200,
+        isWidthSetByUser: false,
         z: (page.items.length || 0) + 1,
         doc: {
           type: "doc",
@@ -1634,7 +1708,8 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
                   tool === "lasso" ||
                   tool === "pen" ||
                   tool === "highlighter" ||
-                  tool === "eraser"
+                  tool === "eraser" ||
+                  tool === "insert-space"
                     ? "none"
                     : isShape
                       ? tool === "select"
@@ -1785,9 +1860,44 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
                     isStrikethrough={isStrikethrough}
                     fontColor={fontColor}
                     textAlign={textAlign}
-                    onUpdate={(updatedDoc) => {
+                    ruleSpacing={
+                      page.background?.kind === "rule" || page.background?.kind === "grid"
+                        ? page.background.spacing || (page.background.kind === "rule" ? 28 : 24)
+                        : undefined
+                    }
+                    containerTopOffset={
+                      page.background?.kind === "rule" || page.background?.kind === "grid"
+                        ? calculateRuleLineBaselineOffset(
+                            item.y,
+                            page.background.spacing || (page.background.kind === "rule" ? 28 : 24),
+                            fontSize || 14,
+                            24,
+                            4,
+                            Math.max(
+                              0,
+                              (quantizeLineHeight(
+                                fontSize || 14,
+                                page.background.spacing || (page.background.kind === "rule" ? 28 : 24)
+                              ) -
+                                (fontSize || 14)) /
+                                2
+                            )
+                          )
+                        : 0
+                    }
+                    paperWidth={paperPreset !== "auto" ? sheetW : "auto"}
+                    onUpdate={(updatedDoc, autoWidth) => {
                       const updatedItems = page.items.map((i) =>
-                        i.id === item.id ? { ...i, doc: updatedDoc } : i,
+                        i.id === item.id
+                          ? {
+                              ...i,
+                              doc: updatedDoc,
+                              w:
+                                !(i as Container).isWidthSetByUser && autoWidth !== undefined
+                                  ? autoWidth
+                                  : i.w,
+                            }
+                          : i,
                       );
                       onUpdatePage({ ...page, items: updatedItems });
                     }}
@@ -2209,8 +2319,9 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
               </div>
 
               {/* OneNote Container Anatomy: Right Sizing Handle Strip */}
-              {isSelected && tool === "select" && !isShape && (
+              {isSelected && (tool === "select" || tool === "text") && !isShape && (
                 <div
+                  className="container-sizing-handle"
                   onPointerDown={(e) => {
                     e.stopPropagation();
                     try {
@@ -2235,17 +2346,55 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
                     } catch {}
                     resizingItemRef.current = null;
                   }}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    if (item.kind === "container") {
+                      const container = item as Container;
+                      const outlineItems = parsePMDocToOutlineItems(container.doc, container.id);
+                      const paperWidth = paperPreset !== "auto" ? sheetW : "auto";
+                      const autoW = calculateElasticContainerWidth(
+                        outlineItems,
+                        container.x,
+                        paperWidth,
+                        fontSize,
+                        fontFamily,
+                        isBold
+                      );
+                      const updatedItems = page.items.map((i) =>
+                        i.id === item.id
+                          ? { ...i, w: autoW, isWidthSetByUser: false }
+                          : i
+                      );
+                      onUpdatePage({ ...page, items: updatedItems });
+                    }
+                  }}
                   style={{
                     position: "absolute",
-                    right: 0,
+                    right: -5,
                     top: 14,
                     bottom: 0,
-                    width: 6,
+                    width: 10,
                     cursor: "ew-resize",
                     backgroundColor: "transparent",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    zIndex: 20,
                   }}
-                  title="Drag to resize container width"
-                />
+                  title="Drag to lock width; Double-click to auto-fit & enable elastic auto-grow"
+                >
+                  <div
+                    style={{
+                      width: 3,
+                      height: 24,
+                      borderRadius: 1.5,
+                      backgroundColor: appleTheme.colors.borderMedium,
+                      transition: "background-color 0.15s",
+                    }}
+                    onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.backgroundColor = appleTheme.colors.accent)}
+                    onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.backgroundColor = appleTheme.colors.borderMedium)}
+                  />
+                </div>
               )}
 
               {/* Bottom-Right Corner Resize Handle */}
@@ -2351,11 +2500,98 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
           />
         )}
 
+        {/* Tier 4: Render Insert Space Tool Guide Overlay */}
+        {insertSpaceGuide && (
+          <div
+            className="insert-space-guide-overlay"
+            style={{
+              position: "absolute",
+              left: -50000,
+              width: 100000,
+              top: insertSpaceGuide.startY,
+              pointerEvents: "none",
+              zIndex: 9999,
+            }}
+          >
+            {/* Cut line Y = y0 */}
+            <div
+              style={{
+                position: "absolute",
+                left: 0,
+                right: 0,
+                top: 0,
+                height: 2,
+                backgroundColor: appleTheme.colors.accent,
+                boxShadow: "0 0 6px rgba(0, 113, 227, 0.5)",
+              }}
+            />
+            {/* Guide badge */}
+            <div
+              style={{
+                position: "absolute",
+                left: 50000 + insertSpaceGuide.startX - 65,
+                top: -26,
+                padding: "3px 10px",
+                backgroundColor: appleTheme.colors.accent,
+                color: "#ffffff",
+                fontSize: 11,
+                fontWeight: 600,
+                borderRadius: appleTheme.radii.pill,
+                boxShadow: appleTheme.shadows.card,
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                whiteSpace: "nowrap",
+              }}
+            >
+              Cut at Y = {Math.round(insertSpaceGuide.startY)}px
+            </div>
+
+            {/* Shaded space area being inserted */}
+            {insertSpaceGuide.currY > insertSpaceGuide.startY && (
+              <div
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  right: 0,
+                  top: 2,
+                  height: insertSpaceGuide.currY - insertSpaceGuide.startY,
+                  backgroundColor: "rgba(0, 113, 227, 0.08)",
+                  borderBottom: `2px dashed ${appleTheme.colors.accent}`,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <div
+                  style={{
+                    position: "absolute",
+                    left: 50000 + insertSpaceGuide.startX - 40,
+                    padding: "3px 12px",
+                    backgroundColor: appleTheme.colors.glassBg,
+                    backdropFilter: "blur(8px)",
+                    WebkitBackdropFilter: "blur(8px)",
+                    border: `1px solid ${appleTheme.colors.accent}`,
+                    borderRadius: appleTheme.radii.pill,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: appleTheme.colors.accent,
+                    boxShadow: appleTheme.shadows.card,
+                  }}
+                >
+                  +{Math.round(insertSpaceGuide.currY - insertSpaceGuide.startY)}px
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Composite Selection Bounding Box & Toolbar */}
         {compositeBBox &&
           tool !== "pen" &&
           tool !== "highlighter" &&
           tool !== "eraser" &&
+          tool !== "insert-space" &&
           (tool === "lasso" ||
             tool === "select" ||
             selectedStrokeIds.length > 0 ||
@@ -2520,13 +2756,15 @@ export const Canvas: React.FC<CanvasProps> = React.memo(
               : "grab"
             : selectedShape
               ? "crosshair"
-              : tool === "text"
-                ? "text"
-                : tool === "lasso"
-                  ? "crosshair"
-                  : isPanningRef.current
-                    ? "grabbing"
-                    : "default",
+              : tool === "insert-space"
+                ? "row-resize"
+                : tool === "text"
+                  ? "text"
+                  : tool === "lasso"
+                    ? "crosshair"
+                    : isPanningRef.current
+                      ? "grabbing"
+                      : "default",
           userSelect: "none",
         }}
       >

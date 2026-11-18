@@ -172,6 +172,8 @@ pub struct ContainerItem {
     #[serde(flatten)]
     pub coords: BoxCoords,
     pub doc: PMNode,
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "isWidthSetByUser")]
+    pub is_width_set_by_user: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

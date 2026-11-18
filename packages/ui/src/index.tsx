@@ -16,4 +16,5 @@ export * from './components/ExportModal';
 export * from './components/M0LatencyDashboard';
 export * from './components/ThemeSwitcher';
 export * from './utils/ink';
+export * from './utils/onenote-engine';
 export * from './theme';

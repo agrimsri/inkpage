@@ -68,6 +68,7 @@ fn test_export_native_inkbook_structure() {
                             text: None,
                             marks: None,
                         },
+                        is_width_set_by_user: None,
                     }),
                     ImportedItem::Ink(InkGroupItem {
                         coords: BoxCoords {

@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "pnpm --filter @inkpage/desktop dev",
     "build": "pnpm --filter @inkpage/format build && pnpm --filter @inkpage/ui build && pnpm --filter @inkpage/desktop build",
-    "test": "cargo test --workspace",
+    "test": "cargo test --workspace && node --test packages/ui/test/*.test.mjs",
     "prepare:backend": "node scripts/prepare-backend.mjs",
     "package:dir": "pnpm build && pnpm prepare:backend && pnpm --filter @inkpage/desktop package:dir",
     "package:linux": "pnpm build && pnpm prepare:backend && pnpm --filter @inkpage/desktop package:linux",

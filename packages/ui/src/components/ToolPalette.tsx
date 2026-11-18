@@ -12,10 +12,11 @@ import {
   Redo2,
   Activity,
   Layers,
+  MoveVertical,
 } from 'lucide-react';
 import { appleTheme, appleStyles, useTheme } from '../theme';
 
-export type ToolType = 'select' | 'text' | 'pen' | 'highlighter' | 'eraser' | 'lasso';
+export type ToolType = 'select' | 'text' | 'pen' | 'highlighter' | 'eraser' | 'lasso' | 'insert-space';
 
 export interface ToolPaletteProps {
   activeTool: ToolType;
@@ -131,6 +132,15 @@ export const ToolPalette: React.FC<ToolPaletteProps> = ({
         >
           <Eraser size={14} style={{ marginRight: 4 }} />
           <span>Eraser</span>
+        </button>
+
+        <button
+          onClick={() => onSelectTool('insert-space')}
+          title="Insert Space (Drag down on canvas to insert vertical space)"
+          style={appleStyles.segmentedControlItem(activeTool === 'insert-space')}
+        >
+          <MoveVertical size={14} style={{ marginRight: 4 }} />
+          <span>Space</span>
         </button>
       </div>
 

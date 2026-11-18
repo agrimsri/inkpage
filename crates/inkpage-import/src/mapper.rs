@@ -240,6 +240,7 @@ impl Mapper {
                 z: 1,
             },
             doc,
+            is_width_set_by_user: None,
         })
     }
 

@@ -613,9 +613,16 @@ export const Ribbon: React.FC<RibbonProps> = React.memo((props) => {
             {/* Space Tool */}
             <RibbonGroup title="Space">
               <button
-                onClick={props.onInsertSpace}
+                onClick={() => {
+                  props.onSelectTool('insert-space');
+                  props.onInsertSpace?.();
+                }}
                 title="Insert Space (Drag down on canvas to insert vertical space)"
-                style={actionButtonStyle}
+                style={{
+                  ...actionButtonStyle,
+                  backgroundColor: props.activeTool === 'insert-space' ? appleTheme.colors.accentTintHover : 'transparent',
+                  border: props.activeTool === 'insert-space' ? `1px solid ${appleTheme.colors.accent}` : 'none',
+                }}
               >
                 <MoveVertical size={16} color={appleTheme.colors.accent} />
                 <span>Insert Space</span>
